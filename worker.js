@@ -85,8 +85,7 @@ function conditions(c){
     "2. اضغط زر المشاركة حتى يتأكد البوت من عضويتك بالقنوات الثلاث.\n"+
     "3. المشاركة مرة واحدة لكل حساب، وتُلغى الأهلية إذا غادرت قناة.\n"+
     "4. آخر وقت للتسجيل: "+htmlSafe(baghdad(c.ends_at))+" (بتوقيت بغداد).\n"+
-    "5. عدد الفائزين: "+(c.winner_count||1)+"، "+htmlSafe(way)+".</blockquote>"+
-    "\n\n<em>ℹ️ الخصوصية: يسجل البوت الاسم واليوزر وID ووقت المشاركة ويرسلها للمسؤول؛ والبايو إذا كان متاحاً.</em>";
+    "5. عدد الفائزين: "+(c.winner_count||1)+"، "+htmlSafe(way)+".</blockquote>";
 }
 function fullText(c){return "🎉 "+htmlSafe(c.name)+"\n\n"+htmlSafe(c.description)+"\n\n"+conditions(c);}
 async function getContest(env,id){return env.DB.prepare("SELECT * FROM contests WHERE id=?").bind(id).first();}
@@ -97,12 +96,11 @@ function buttons(c,chs,n){
   const rows=[[{text:"👥 المشاركين: "+n,callback_data:"count:"+c.id}]];
   if(closed){rows.push([{text:"🔒 انتهت المشاركة",callback_data:"time:"+c.id}]);}
   else{
-    // Telegram channel inline keyboards are shared: all viewers see ❌ here.
-    // The successful member sees ✅ in their individual callback/DM instead.
-    rows.push([{text:"❌ المشاركة بالمسابقة",callback_data:"join:"+c.id}]);
+    // The registration button has no emoji; personal success is confirmed by callback.
+    rows.push([{text:"المشاركة بالمسابقة",callback_data:"join:"+c.id}]);
     rows.push([{text:"⏳ المتبقي: "+countdown(c.ends_at-timeNow()),callback_data:"time:"+c.id}]);
     // Do not add a separate timer URL button.
-    for(const ch of chs)rows.push([{text:"📢 "+(ch.idx===0?"قناة النشر":"قناة الاشتراك "+(ch.idx+1)),url:ch.url}]);
+    for(const ch of chs)rows.push([{text:"📢 "+(ch.idx===0?"قناة النشر":"قناة الاشتراك "+ch.idx),url:ch.url}]);
   }
   return {inline_keyboard:rows};
 }
