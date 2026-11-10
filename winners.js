@@ -133,7 +133,7 @@ async function announcePrepared(env,c,row){
   const label=simulated?"إعلان النتائج":row.result_kind==="manual"?"اختيار يدوي من الإدارة":"سحب عشوائي من المشاركين المؤهلين";
   const lines=winners.map((w,i)=> (i+1)+". "+winnerDisplay(w)).join("\n");
   const text="🏆 نتائج المسابقة: "+safe(c.name)+
-    "\n\n📋 "+(simulated?"إعلان الفائزين: بواسطة بوت المسابقة":row.result_kind==="random"?"إعلان الفائزين عشوائياً: بواسطة بوت المسابقة":"طريقة اختيار الفائزين: "+label)+
+    "\n\n📋 "+(simulated?"إعلان الفائزين: بواسطة بوت المسابقة":row.result_kind==="random"?"إعلان الفائزين عشوائياً : بواسطة بوت المسابقة":"طريقة اختيار الفائزين: "+label)+
     "\n\n"+(winners.length?"🎉 الفائزون:\n\n"+lines:"لم يتوفر مشاركون مؤهلون للسحب.")+
     (simulated?"\n\n🎉 تهانينا للأسماء المعلنة.":"\n\n✅ تم التحقق من شروط المشاركة قبل اعتماد النتائج.");
   const msg=await tg(env,"sendMessage",{chat_id:c.chat_id,text,parse_mode:"HTML",disable_web_page_preview:true});
