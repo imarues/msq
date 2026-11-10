@@ -37,8 +37,8 @@ const canonical = value => String(value||"").trim().toLowerCase().replace(/^http
 export function requireClassroomChannels(env,channels){
   const chosen=String(env.DEMO_ALLOWED_CHANNELS||"").split(/[\s,;]+/).filter(Boolean).map(canonical);
   const specified=channels.map(c=>canonical(c.username));
-  if(chosen.length!==3 || new Set(chosen).size!==3 || specified.length!==3 ||
-     !specified.every(ch=>chosen.includes(ch))){
-    throw Error("وضع العرض المقيد يحتاج إعداد DEMO_ALLOWED_CHANNELS بيوزرات القنوات التجريبية الثلاث داخل Cloudflare. ما يصير تشغيله على قناة غير مخصصة للعرض.");
+  if(chosen.length<3 || new Set(chosen).size!==chosen.length || specified.length!==3 ||
+     new Set(specified).size!==3 || !specified.every(ch=>chosen.includes(ch))){
+    throw Error("أضف 3 قنوات تجريبية مختلفة أو أكثر إلى DEMO_ALLOWED_CHANNELS في Cloudflare. يجب أن تكون قنوات المسابقة الثلاث كلها ضمن القائمة المسموحة.");
   }
 }
