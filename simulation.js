@@ -34,13 +34,13 @@ export async function getDemoEntries(env,id){
 
 
 // Four authorized channels for posting the *educational demo*.
-// Add the actual usernames supplied by the project owner (never guess them).
-// Once configured, Cloudflare's DEMO_ALLOWED_CHANNELS variable is not needed.
+// Publication channels authorized by the project owner.
+// Cloudflare's DEMO_ALLOWED_CHANNELS variable is not used.
 const DEMO_PUBLICATION_CHANNELS = Object.freeze([
-  // "@first_test_channel",
-  // "@second_test_channel",
-  // "@third_test_channel",
-  // "@fourth_test_channel",
+  "@zzxus81",
+  "@iKiraPlus",
+  "@iKiraPlus2",
+  "@ikiraplus1",
 ]);
 const canonical = value => String(value||"").trim().toLowerCase().replace(/^https?:\/\/(www\.)?t\.me\//,"@").replace(/^@/,"");
 export function requireClassroomChannels(env,channels){
@@ -50,10 +50,8 @@ export function requireClassroomChannels(env,channels){
   if(configured.length>0 && (configured.length!==4 || new Set(configured).size!==4)){
     throw Error("قائمة قنوات العرض في الكود يجب أن تتضمن أربع قنوات مختلفة وصحيحة.");
   }
-  // Backward compatibility: keep existing demos working until the owner supplies
-  // the four specific usernames. Once configured in the code, this variable is ignored.
-  const approved=configured.length?configured:
-    String(env.DEMO_ALLOWED_CHANNELS||"").split(/[\s,;]+/).filter(Boolean).map(canonical);
+  // Once configured, only these explicitly approved publishing channels are allowed.
+  const approved=configured;
   if(!publishChannel || !approved.includes(publishChannel)){
     throw Error("قناة نشر المسابقة غير مصرح بها لوضع العرض التجريبي. أضف يوزرها ضمن القنوات الأربع المسموحة في كود simulation.js.");
   }
