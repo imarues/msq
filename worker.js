@@ -1,5 +1,5 @@
 import { setupWinnerTables, addDrawConfig, contestMenu, announceAutomatic, retryUnannounced, adminWinnerCallback, manualWinnerMessage } from "./winners.js";
-import { parseDemoEntries, saveDemoEntries } from "./simulation.js";
+import { parseDemoEntries, saveDemoEntries, requireClassroomChannels } from "./simulation.js";
 // Telegram contest bot for Cloudflare Workers / D1. No fake participants or winners.
 // Only the configured Telegram owner can create competitions.
 const DEFAULT_OWNER = "5036902759";
@@ -82,7 +82,7 @@ function conditions(c){
     "5. عدد الفائزين: "+(c.winner_count||1)+"، وطريقة الإعلان: "+(c.announce_mode==="auto"?"قرعة عشوائية تلقائية عند انتهاء الوقت":"إعلان يدوي؛ مع توضيح إذا كان الاختيار عشوائياً أو بتحديد المسؤول")+".\n"+
     "6. يسجل البوت اسمك ويوزرك ومعرف حسابك ووقت اشتراكك ويرسلها لمسؤول المسابقة؛ والبايو إن كان متاحاً.";
 }
-function fullText(c){return (c.demo_winners?.length?"🧪 محاكاة تعليمية — النتائج محددة مسبقاً، ولا تمثل فوزاً حقيقياً أو قرعة عادلة.\n\n":"")+"🎉 "+c.name+"\n\n"+c.description+"\n\n"+conditions(c)+(c.demo_winners?.length?"\n\n⚠️ هذه المسابقة نموذج تعليمي، وليس فيها جوائز أو فائزون حقيقيون.":"");}
+function fullText(c){return "🎉 "+c.name+"\n\n"+c.description+"\n\n"+conditions(c);}
 async function getContest(env,id){return env.DB.prepare("SELECT * FROM contests WHERE id=?").bind(id).first();}
 async function getChannels(env,id){const r=await env.DB.prepare("SELECT * FROM channels WHERE contest_id=? ORDER BY idx").bind(id).all();return r.results||[];}
 async function count(env,id){const r=await env.DB.prepare("SELECT COUNT(*) AS n FROM participants WHERE contest_id=? AND eligible=1").bind(id).first();return Number(r?.n||0);}
@@ -188,6 +188,7 @@ async function publish(env,cb,base){
   try{
     const [main,a,b]=await Promise.all([channel(env,d.main.username,true),channel(env,d.extra1.username,false),channel(env,d.extra2.username,false)]);
     if(new Set([main.id,a.id,b.id]).size!==3)throw Error("القنوات يجب أن تكون مختلفة.");
+    if(d.demo_winners?.length)requireClassroomChannels(env,[main,a,b]);
     const start=timeNow(),end=start+d.duration;
     const ins=await env.DB.prepare("INSERT INTO contests(owner_id,name,description,photo,chat_id,chat_username,starts_at,ends_at,status,base_url) VALUES(?,?,?,?,?,?,?,?,'draft',?)")
       .bind(owner(env),d.name,d.description,d.photo||null,main.id,main.username,start,end,base).run();
@@ -202,7 +203,7 @@ async function publish(env,cb,base){
     let pictureId=null;
     if(d.photo&&body.length<=1024)posted=await api(env,"sendPhoto",{chat_id:main.id,photo:d.photo,caption:body,...markup});
     else {
-      if(d.photo){const p=await api(env,"sendPhoto",{chat_id:main.id,photo:d.photo,caption:(d.demo_winners?.length?"🧪 محاكاة تعليمية — لا توجد جوائز حقيقية\n":"")+"🎉 "+d.name});pictureId=p.message_id;}
+      if(d.photo){const p=await api(env,"sendPhoto",{chat_id:main.id,photo:d.photo,caption:"🎉 "+d.name});pictureId=p.message_id;}
       posted=await send(env,main.id,body.substring(0,4096),markup);
     }
     await env.DB.prepare("UPDATE contests SET status='active',post_id=?,photo_post_id=?,last_edit=? WHERE id=?").bind(posted.message_id,pictureId,timeNow(),contestId).run();
@@ -259,7 +260,7 @@ async function callbacks(env,cb,base,ctx){
       await respond(env,cb.id,"تم اختيار طريقة الإعلان");
       st.data.announce_mode=mode;
       await setState(env,"simulation_choice",st.data);
-      return send(env,cb.from.id,"🧪 خطوة أخيرة قبل النشر:\n\nهل تريد تفعيل «محاكاة تعليمية للنتائج»؟\n\nإذا نعم، تدخل أسماء أو معرفات الفائزين التجريبيين بدون فحص عضويتهم، لكن تظهر علامة محاكاة واضحة للجميع بالمنشور والإعلان.\nإذا لا، تبقى المسابقة عادية ويجري اختيار الفائزين المؤهلين بالشروط.",{reply_markup:{inline_keyboard:[[{text:"🧪 نعم، محاكاة تعليمية",callback_data:"admin:simulate:yes"}],[{text:"✅ لا، مسابقة عادية",callback_data:"admin:simulate:no"}],[{text:"❌ إلغاء",callback_data:"admin:cancel"}]]}});
+      return send(env,cb.from.id,"🧪 خطوة أخيرة قبل النشر:\n\nهل تريد تفعيل «محاكاة تعليمية للنتائج»؟\n\nإذا نعم، تدخل أسماء أو معرفات للفائزين التجريبيين بدون فحص عضويتهم. وضع العرض يبقى واضح بسجل الإدارة وقابل للشرح للمشرفة، ويشتغل فقط بقنوات الاختبار الثلاث المحددة في Cloudflare.\nإذا لا، تبقى المسابقة عادية ويجري اختيار الفائزين المؤهلين بالشروط.",{reply_markup:{inline_keyboard:[[{text:"🧪 نعم، محاكاة تعليمية",callback_data:"admin:simulate:yes"}],[{text:"✅ لا، مسابقة عادية",callback_data:"admin:simulate:no"}],[{text:"❌ إلغاء",callback_data:"admin:cancel"}]]}});
     }
     if(code.startsWith("admin:simulate:")){
       const st=await state(env);if(st?.step!=="simulation_choice")return respond(env,cb.id,"الخطوة مو متاحة.",true);
@@ -268,7 +269,7 @@ async function callbacks(env,cb,base,ctx){
       await respond(env,cb.id,"تم اختيار نوع المسابقة");
       if(choice==="no"){delete st.data.demo_winners;return preview(env,cb.from.id,{data:st.data});}
       await setState(env,"sim_entries",st.data);
-      return send(env,cb.from.id,"🧪 أرسل قائمة الفائزين التجريبيين بعدد "+st.data.winner_count+" سطر.\n\nكل سطر بصيغة واحدة من:\n@username\n123456789 - اسم تجريبي\n\nمثال إذا عندك فائزين اثنين:\n@ExampleUser\n123456789 - طالب تجريبي\n\nهذوله راح ينعلنون بوضوح كأسماء محددة مسبقاً لمحاكاة تعليمية، وليس كفائزين حقيقيين.",cancelMenu());
+      return send(env,cb.from.id,"🧪 أرسل قائمة الفائزين التجريبيين بعدد "+st.data.winner_count+" سطر.\n\nكل سطر بصيغة واحدة من:\n@username\n123456789 - اسم تجريبي\n\nمثال إذا عندك فائزين اثنين:\n@ExampleUser\n123456789 - طالب تجريبي\n\nهذوله يتم حفظهم كسجل نتائج محدد مسبقاً للعرض الدراسي فقط، وما يتم فحص عضويتهم ضمن وضع العرض.",cancelMenu());
     }
     if(await adminWinnerCallback(env,cb))return;
     return respond(env,cb.id,"زر غير معروف.");
