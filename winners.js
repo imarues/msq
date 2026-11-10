@@ -136,7 +136,14 @@ async function announcePrepared(env,c,row){
     "\n\n📋 "+(simulated?"إعلان الفائزين: بواسطة بوت المسابقة":row.result_kind==="random"?"إعلان الفائزين عشوائياً : بواسطة بوت المسابقة":"طريقة اختيار الفائزين: "+label)+
     "\n\n"+(winners.length?"🎉 الفائزون:\n\n"+lines:"لم يتوفر مشاركون مؤهلون للسحب.")+
     (simulated?"\n\n🎉 تهانينا للأسماء المعلنة.":"\n\n✅ تم التحقق من شروط المشاركة قبل اعتماد النتائج.");
-  const msg=await tg(env,"sendMessage",{chat_id:c.chat_id,text,parse_mode:"HTML",disable_web_page_preview:true});
+  if(!c.post_id)throw Error("تعذر إرسال نتائج المسابقة: رقم المنشور الأصلي غير موجود.");
+  const msg=await tg(env,"sendMessage",{
+    chat_id:c.chat_id,
+    text,
+    parse_mode:"HTML",
+    disable_web_page_preview:true,
+    reply_parameters:{message_id:Number(c.post_id),allow_sending_without_reply:false}
+  });
   await env.DB.prepare("UPDATE draw_results SET status='published',announced_at=?,message_id=? WHERE contest_id=? AND status='publishing'")
     .bind(now(),msg.message_id,c.id).run();
   const privateLines=winners.map(w=>w.name+" | "+(w.username?"@"+w.username:"بدون يوزر")+" | "+w.user_id).join("\n");
