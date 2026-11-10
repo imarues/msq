@@ -72,3 +72,27 @@ The three usernames must match the publication channel and the other two subscri
 Use only authorised, consenting demonstration channels with no real prizes, and disclose the actual selection method during the examination/debrief. Keep `BOT_TOKEN` and `WEBHOOK_SECRET` as Cloudflare Secrets.
 
 Both demo and real contests support automatic results at expiry or manual results after the owner presses the results button.
+
+### Winner display format
+
+The channel result uses this consistent format:
+
+```text
+🏆 نتائج المسابقة: كتش
+
+📋 إعلان النتائج: الأسماء المعتمدة للعرض
+
+🎉 الفائزون:
+
+1. Ali Hussain (@hx5x5i)
+2. Nadeen (ID: 123456789)
+
+🎉 تهانينا للأسماء المعلنة.
+```
+
+For real random draws, the middle line states the actual random selection method and the ending confirms verified eligibility. For classroom preset results, the message does not claim a random draw or verified eligibility.
+
+To ensure display names appear correctly in a preset classroom demonstration, enter one winner per line in either `Full Name - @username` or `123456789 - Full Name` format. Also accepted: `@username - Full Name` and `@username`; for username-only lines, the bot attempts an optional Telegram/participants name lookup but does not invent an unavailable name. Real participant names and available usernames are taken from recorded Telegram participant data.
+
+The contest terms disclose that a winner's numeric Telegram ID can appear in the public announcement when they do not have a public username.
+
