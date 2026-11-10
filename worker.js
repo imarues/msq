@@ -97,9 +97,11 @@ function buttons(c,chs,n){
   const rows=[[{text:"👥 المشاركين: "+n,callback_data:"count:"+c.id}]];
   if(closed){rows.push([{text:"🔒 انتهت المشاركة",callback_data:"time:"+c.id}]);}
   else{
-    // A channel post has one shared keyboard. Do not turn it green for
-    // everybody when only one member has enrolled.
-    rows.push([{text:"🔴 المشاركة بالمسابقة",callback_data:"join:"+c.id,style:"danger"}]);
+    // Telegram channel inline keyboards are shared: all viewers see ❌ here.
+    // The successful member sees ✅ in their individual callback/DM instead.
+    rows.push([{text:"❌ المشاركة بالمسابقة",callback_data:"join:"+c.id}]);
+    rows.push([{text:"⏳ المتبقي: "+countdown(c.ends_at-timeNow()),callback_data:"time:"+c.id}]);
+    // Do not add a separate timer URL button.
     for(const ch of chs)rows.push([{text:"📢 "+(ch.idx===0?"قناة النشر":"قناة الاشتراك "+(ch.idx+1)),url:ch.url}]);
   }
   return {inline_keyboard:rows};
@@ -248,7 +250,7 @@ async function join(env,cb,c,ctx){
   if(!ins.meta?.changes)await env.DB.prepare("UPDATE participants SET eligible=1,verified_at=?,name=?,username=? WHERE contest_id=? AND user_id=?").bind(moment,full,person.username||null,c.id,uid).run();
   await respond(env,cb.id,newMember?"✅ تم تسجيلك بنجاح!":"✅ أنت مسجل مسبقاً وعضويتك صحيحة.");
   ctx.waitUntil(updateButtons(env,c));
-  if(newMember)ctx.waitUntil(send(env,uid,"✅ تم تسجيل مشاركتك في مسابقة «"+c.name+"» بنجاح.",{reply_markup:{inline_keyboard:[[{text:"🟢 أنت مشارك بالمسابقة",callback_data:"join:"+c.id,style:"success"}]]}}).catch(()=>{}));
+  if(newMember)ctx.waitUntil(send(env,uid,"✅ تم تسجيل مشاركتك في مسابقة «"+c.name+"» بنجاح.",{reply_markup:{inline_keyboard:[[{text:"✅ أنت مشارك بالمسابقة",callback_data:"join:"+c.id}]]}}).catch(()=>{}));
   if(newMember)ctx.waitUntil((async()=>{
     let bio=null;try{const detail=await api(env,"getChat",{chat_id:Number(uid)});bio=detail.bio?.slice(0,350)||null;}catch{}
     if(bio)await env.DB.prepare("UPDATE participants SET bio=? WHERE contest_id=? AND user_id=?").bind(bio,c.id,uid).run();
