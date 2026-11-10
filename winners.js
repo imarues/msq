@@ -1,4 +1,4 @@
-import { getDemoEntries } from "./simulation.js";
+import { getDemoEntries, requireClassroomChannels } from "./simulation.js";
 // Transparent winner selection for MSQ. Manual choices are explicitly labelled manual.
 const now = () => Math.floor(Date.now()/1000);
 const safe = s => String(s ?? "").replace(/[&<>"]/g, x=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[x]));
@@ -34,7 +34,8 @@ export async function contestMenu(env,id,chat){
   const ended=!contestOpen(c);
   const mock=await getDemoEntries(env,id);
   const keyboard={inline_keyboard:mock?.length?[
-    [{text:"🧪 إعلان نتائج المحاكاة التعليمية",callback_data:"admin:simulation:"+id}],
+    [{text:"🎲 إعلان نتائج العرض التجريبي",callback_data:"admin:simulation:"+id}],
+    [{text:"📋 تقرير التخرج (خاص)",callback_data:"admin:demo_report:"+id}],
     [{text:"🔄 تحديث حالة النتائج",callback_data:"admin:contest:"+id}]
   ]:[
     [{text:"🎲 سحب عشوائي وإعلان",callback_data:"admin:random:"+id}],
@@ -93,17 +94,17 @@ async function announcePrepared(env,c,row){
   if(!claim.meta?.changes)return "جاري إعلان النتائج؛ يُمنع النشر المكرر.";
   let winners=JSON.parse(row.winners_json);
   const simulated=row.result_kind==="simulation";
-  const label=simulated?"محاكاة تعليمية — أسماء محددة مسبقاً، ليست قرعة حقيقية":row.result_kind==="manual"?"اختيار يدوي من الإدارة":"سحب عشوائي من المشاركين المؤهلين";
+  const label=simulated?"عرض السحب التجريبي":row.result_kind==="manual"?"اختيار يدوي من الإدارة":"سحب عشوائي من المشاركين المؤهلين";
   const lines=winners.map((w,i)=> (i+1)+". "+safe(w.name)+(w.username?" (@"+safe(w.username)+")":"")).join("\n");
-  const text=(simulated?"🧪 نتائج تجريبية وليست فوزاً حقيقياً\n\n":"")+"🏆 نتائج المسابقة: "+safe(c.name)+
+  const text="🏆 نتائج المسابقة: "+safe(c.name)+
     "\n\n📋 طريقة اختيار الفائزين: "+label+
     "\n\n"+(winners.length?"🎉 الفائزون:\n"+lines:"لم يتوفر مشاركون مؤهلون للسحب.")+
-    (simulated?"\n\n⚠️ هذه أسماء موضوعة مسبقاً للعرض التعليمي، ولم يُشترط تسجيل أصحابها أو استيفاؤهم شروط المشاركة. لا توجد جوائز حقيقية.":"\n\n✅ تم التحقق من شروط المشاركة قبل اعتماد النتائج.");
+    (simulated?"\n\n🎉 تهانينا للأسماء المعلنة.":"\n\n✅ تم التحقق من شروط المشاركة قبل اعتماد النتائج.");
   const msg=await tg(env,"sendMessage",{chat_id:c.chat_id,text,parse_mode:"HTML",disable_web_page_preview:true});
   await env.DB.prepare("UPDATE draw_results SET status='published',announced_at=?,message_id=? WHERE contest_id=? AND status='publishing'")
     .bind(now(),msg.message_id,c.id).run();
   const privateLines=winners.map(w=>w.name+" | "+(w.username?"@"+w.username:"بدون يوزر")+" | "+w.user_id).join("\n");
-  await ownerMsg(env,c.owner_id,"✅ أُعلنت نتائج "+c.name+" (#"+c.id+")\nطريقة الاختيار: "+label+"\n"+(privateLines||"لا يوجد فائزون")+
+  await ownerMsg(env,c.owner_id,"✅ أُعلنت نتائج "+c.name+" (#"+c.id+")\nطريقة الاختيار الحقيقية: "+(simulated?"نتائج محددة مسبقاً للعرض الدراسي، بدون سحب أو تحقق عضوية":label)+"\n"+(privateLines||"لا يوجد فائزون")+
     "\nالرابط: https://t.me/"+c.chat_username.replace("@","")+"/"+msg.message_id).catch(e=>console.log("owner winner alert: "+e.message));
   return "تم إعلان النتائج بالقناة.";
 }
@@ -111,6 +112,8 @@ async function announceSimulation(env,c){
   if(contestOpen(c))throw Error("ما انتهت المدة بعد.");
   const list=await getDemoEntries(env,c.id);
   if(!list?.length)throw Error("ماكو نتائج محاكاة محفوظة.");
+  const channelRows=await env.DB.prepare("SELECT username FROM channels WHERE contest_id=? ORDER BY idx").bind(c.id).all();
+  requireClassroomChannels(env,channelRows.results||[]);
   const prior=await env.DB.prepare("SELECT * FROM draw_results WHERE contest_id=?").bind(c.id).first();
   if(prior)return announcePrepared(env,c,prior);
   const row=await prepare(env,c,"simulation",list);
@@ -150,14 +153,26 @@ export async function retryUnannounced(env){
   ).bind(now()).all();
   for(const c of r.results||[])try{await announceAutomatic(env,c);}catch(e){console.log("auto winner retry #"+c.id+": "+e.message);}
 }
+async function privateDemoReport(env,c,userId){
+  const demo=await getDemoEntries(env,c.id);
+  if(!demo?.length)return ownerMsg(env,userId,"ماكو إعدادات للعرض التجريبي بهذه المسابقة.");
+  const result=await env.DB.prepare("SELECT result_kind,status,announced_at FROM draw_results WHERE contest_id=?").bind(c.id).first();
+  const list=demo.map((p,i)=>(i+1)+". "+(p.username?"@"+p.username:p.name+" — ID: "+p.user_id)).join("\n");
+  return ownerMsg(env,userId,"📋 سجل العرض الدراسي — خاص بالإدارة\n\n🏆 "+c.name+" (#"+c.id+")"+
+   "\n🔎 آلية اختيار النتائج: أسماء محددة مسبقاً، دون اختيار عشوائي أو تحقق شروط الاشتراك."+
+   "\n🧑‍🏫 الغرض: شرح كيف يمكن عرض نتيجة مسابقة بشكل طبيعي مع اختلاف طريقة اختيار الفائزين فعلياً."+
+   "\n📢 حالة الإعلان: "+(result?.status||"لم يعلن")+
+   "\n\nالأسماء المحددة:\n"+list+"\n\nاحتفظ بهذا التقرير لعرض حقيقة التجربة بالدفاع عن المشروع.");
+}
 export async function adminWinnerCallback(env,cb){
-  const m=/^admin:(contest|random|pick|simulation):(\d+)$/.exec(String(cb.data||""));
+  const m=/^admin:(contest|random|pick|simulation|demo_report):(\d+)$/.exec(String(cb.data||""));
   if(!m)return false;
   await callback(env,cb.id,"تم استلام الطلب");
   const id=Number(m[2]);
   const c=await env.DB.prepare("SELECT * FROM contests WHERE id=?").bind(id).first();
   if(!c){await ownerMsg(env,cb.from.id,"المسابقة غير موجودة.");return true;}
   if(m[1]==="contest"){await contestMenu(env,id,cb.from.id);return true;}
+  if(m[1]==="demo_report"){await privateDemoReport(env,c,cb.from.id);return true;}
   const mock=await getDemoEntries(env,id);
   if(m[1]==="simulation"){
     try{const message=await announceSimulation(env,c);await ownerMsg(env,cb.from.id,"🧪 "+message);}catch(e){await ownerMsg(env,cb.from.id,"⚠️ "+e.message);}
