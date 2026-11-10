@@ -47,15 +47,28 @@ Subsequent pushes to **main** trigger Workers Builds to deploy automatically. Th
 
 After creating a contest the owner chooses the number of winners (1–10) and whether to announce automatically or manually. For manual announcement, open **📚 مسابقاتي**, choose the contest, and select **🎲 سحب عشوائي وإعلان** or **👤 اختيار مشارك وإعلان (يدوي)**. For the latter, send each eligible participant's Telegram ID as prompted. Both modes wait for the registration deadline. A contest result is stored in D1; further clicks should not create a new draw. Telegram's sending API has no exactly-once guarantee if a network failure occurs between sending and marking the database row as published.
 
-## Educational simulation (not a real contest draw)
+## Controlled graduation demo: preset results
 
-After choosing the announcement mode, the owner sees an optional step **🧪 محاكاة تعليمية**. If **No**, everything works as a normal contest, and winners must meet channel membership conditions. If **Yes**, submit exactly one line per selected mock winner, matching the winner count defined earlier, in either format:
+For the graduation presentation, the administrator may select **🧪 نعم** during contest setup and send one preset result per configured winner:
 
 ```text
 @ExampleUser
-123456789 - طالب تجريبي
+123456789 - اسم تجريبي
 ```
 
-The display labels are predetermined by the owner for an educational demonstration. No eligibility checks are claimed for them. The *contest post*, *admin preview*, and *result announcement* prominently say **educational simulation, no real prize, no genuine random draw**. The result is stored separately in D1 and labelled as simulation; it cannot be announced as a genuine random or eligible manual draw.
+The bot stores the true method and selected entries in a private D1 record. The owner can open **📋 تقرير التخرج (خاص)** in the contest management menu to explain the mechanism to the examiner.
 
-If you selected automatic announcement, the simulated results are published after expiry with the prominent warning. If you selected owner-controlled announcement, open **📚 مسابقاتي** and select **🧪 إعلان نتائج المحاكاة التعليمية** after the deadline. Normal contests are unchanged.
+The public-facing classroom demonstration uses normal, neutral contest wording without displaying a simulation label, but it does not affirm that preset entries actually passed eligibility checks or were chosen by a random algorithm. For normal contests, real winner eligibility is checked.
+
+### Restrict the demonstration to authorised test channels
+
+In **Cloudflare → Workers & Pages → msq → Settings → Variables and Secrets**, add a **Text** variable:
+
+- **Name:** `DEMO_ALLOWED_CHANNELS`
+- **Value:** `@testchannel1,@testchannel2,@testchannel3` (replace with the three exact usernames of your authorised classroom channels)
+
+The three usernames must match the publication channel and the other two subscription channels. Without this setting the bot **blocks publishing/announcing preset demonstrations**. Real contests work without this variable.
+
+Use only authorised, consenting demonstration channels with no real prizes, and disclose the actual selection method during the examination/debrief. Keep `BOT_TOKEN` and `WEBHOOK_SECRET` as Cloudflare Secrets.
+
+Both demo and real contests support automatic results at expiry or manual results after the owner presses the results button.
