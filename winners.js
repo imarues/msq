@@ -88,6 +88,42 @@ async function prepare(env,c,kind,winners){
     .bind(c.id,kind,JSON.stringify(winners.map(p=>({user_id:String(p.user_id),name:formatName(p),username:p.username||null}))),stamp).run();
   return env.DB.prepare("SELECT * FROM draw_results WHERE contest_id=?").bind(c.id).first();
 }
+function winnerDisplay(w){
+  const displayedName=String(w.name||"").trim()||"مشارك";
+  const rawHandle=String(w.username||"").replace(/^@/,"").trim();
+  if(rawHandle){
+    const handle="@"+rawHandle;
+    if(displayedName.toLowerCase()===handle.toLowerCase() ||
+       displayedName.toLowerCase()===rawHandle.toLowerCase()){
+      return safe(handle);
+    }
+    return safe(displayedName)+" ("+safe(handle)+")";
+  }
+  const uid=String(w.user_id||"").trim();
+  return safe(displayedName)+(uid?" (ID: "+safe(uid)+")":"");
+}
+async function resolveDemoNames(env,c,list){
+  const entries=[];
+  for(const row of list){
+    const item={...row};
+    if(item.username && String(item.name).toLowerCase()==="@"+item.username.toLowerCase()){
+      const match=await env.DB.prepare("SELECT name FROM participants WHERE contest_id=? AND LOWER(username)=LOWER(?) AND name IS NOT NULL ORDER BY joined_at DESC LIMIT 1").bind(c.id,item.username).first();
+      if(match?.name && !String(match.name).startsWith("@"))item.name=match.name;
+      else{
+        // Telegram may not let bots resolve a private username without prior contact.
+        // Do not invent a display name if lookup is unavailable.
+        try{
+          const ch=await tg(env,"getChat",{chat_id:"@"+item.username});
+          if(ch.type==="private" && ch.first_name){
+            item.name=[ch.first_name,ch.last_name].filter(Boolean).join(" ");
+          }
+        }catch(e){console.log("Optional username display lookup failed: "+e.message);}
+      }
+    }
+    entries.push(item);
+  }
+  return entries;
+}
 async function announcePrepared(env,c,row){
   if(row.status==="published")return "النتائج مُعلنة مسبقاً.";
   const claim=await env.DB.prepare("UPDATE draw_results SET status='publishing',prepared_at=? WHERE contest_id=? AND (status='prepared' OR (status='publishing' AND prepared_at<?))").bind(now(),c.id,now()-120).run();
@@ -95,10 +131,10 @@ async function announcePrepared(env,c,row){
   let winners=JSON.parse(row.winners_json);
   const simulated=row.result_kind==="simulation";
   const label=simulated?"إعلان النتائج":row.result_kind==="manual"?"اختيار يدوي من الإدارة":"سحب عشوائي من المشاركين المؤهلين";
-  const lines=winners.map((w,i)=> (i+1)+". "+safe(w.name)+(w.username?" (@"+safe(w.username)+")":"")).join("\n");
+  const lines=winners.map((w,i)=> (i+1)+". "+winnerDisplay(w)).join("\n");
   const text="🏆 نتائج المسابقة: "+safe(c.name)+
-    (simulated?"":"\n\n📋 طريقة اختيار الفائزين: "+label)+
-    "\n\n"+(winners.length?"🎉 الفائزون:\n"+lines:"لم يتوفر مشاركون مؤهلون للسحب.")+
+    "\n\n📋 "+(simulated?"إعلان النتائج: الأسماء المعتمدة للعرض":"طريقة اختيار الفائزين: "+label)+
+    "\n\n"+(winners.length?"🎉 الفائزون:\n\n"+lines:"لم يتوفر مشاركون مؤهلون للسحب.")+
     (simulated?"\n\n🎉 تهانينا للأسماء المعلنة.":"\n\n✅ تم التحقق من شروط المشاركة قبل اعتماد النتائج.");
   const msg=await tg(env,"sendMessage",{chat_id:c.chat_id,text,parse_mode:"HTML",disable_web_page_preview:true});
   await env.DB.prepare("UPDATE draw_results SET status='published',announced_at=?,message_id=? WHERE contest_id=? AND status='publishing'")
@@ -116,7 +152,8 @@ async function announceSimulation(env,c){
   requireClassroomChannels(env,channelRows.results||[]);
   const prior=await env.DB.prepare("SELECT * FROM draw_results WHERE contest_id=?").bind(c.id).first();
   if(prior)return announcePrepared(env,c,prior);
-  const row=await prepare(env,c,"simulation",list);
+  const named=await resolveDemoNames(env,c,list);
+  const row=await prepare(env,c,"simulation",named);
   return announcePrepared(env,c,row);
 }
 async function alreadyOrCreate(env,c,kind,manualUser=null){
