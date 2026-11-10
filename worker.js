@@ -1,3 +1,4 @@
+import { setupWinnerTables, addDrawConfig, contestMenu, announceAutomatic, retryUnannounced, adminWinnerCallback, manualWinnerMessage } from "./winners.js";
 // Telegram contest bot for Cloudflare Workers / D1. No fake participants or winners.
 // Only the configured Telegram owner can create competitions.
 const DEFAULT_OWNER = "5036902759";
@@ -25,7 +26,7 @@ function parseDuration(input) {
     "يوم":86400,"يومين":172800,"أيام":86400,"ايام":86400,"day":86400,"days":86400,"d":86400,
     "أسبوع":604800,"اسبوع":604800,"اسابيع":604800,"أسابيع":604800,"week":604800,"weeks":604800,"w":604800
   };
-  x=x.replace(/و/g," ").replace(/(\d+)\s*(ساعات|ساعة|ساعه)\s*نص/g,"$1 ساعة 0.5 ساعة");
+  x=x.replace(/\s+و\s*/g," ").replace(/(\d+)\s*(ساعات|ساعة|ساعه)\s*نص/g,"$1 ساعة 0.5 ساعة");
   if (/^(يومين|ساعتين|دقيقتين)$/.test(x))x="1 "+x;
   x=x.replace(/(^|\s)(يومين|ساعتين|دقيقتين)(?=\s|$)/g,"$1 1 $2");
   if (/^(يوم|ساعة|ساعه|دقيقة|دقيقه)$/.test(x))x="1 "+x;
@@ -55,6 +56,7 @@ async function init(env){
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_participants ON participants(contest_id,eligible,verified_at)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS bot_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
   ]);
+  await setupWinnerTables(env);
 }
 async function state(env){const r=await env.DB.prepare("SELECT * FROM setup WHERE owner_id=?").bind(owner(env)).first();return r?{step:r.step,data:JSON.parse(r.data)}:null;}
 async function setState(env,step,data){await env.DB.prepare("INSERT INTO setup(owner_id,step,data) VALUES(?,?,?) ON CONFLICT(owner_id) DO UPDATE SET step=excluded.step,data=excluded.data").bind(owner(env),step,JSON.stringify(data)).run();}
@@ -111,7 +113,7 @@ async function preview(env,chat,st){
   const d=st.data;
   await setState(env,"ready",d);
   if(d.photo)await api(env,"sendPhoto",{chat_id:chat,photo:d.photo,caption:"🖼 معاينة صورة المسابقة"});
-  await send(env,chat,"📝 معاينة المسابقة\n\n🏆 الاسم: "+d.name+"\n📢 النشر: "+d.main.username+"\n📢 اشتراك: "+d.extra1.username+"\n📢 اشتراك: "+d.extra2.username+"\n⏳ المدة: "+countdown(d.duration)+"\n\n"+d.description+"\n\nالشروط والخصوصية تضاف تلقائياً في آخر المنشور.\n\nلن يُنشر شيء قبل تأكيدك.",{reply_markup:{inline_keyboard:[[{text:"✅ تأكيد نشر المسابقة",callback_data:"admin:publish"}],[{text:"❌ إلغاء",callback_data:"admin:cancel"}]]}});
+  await send(env,chat,"📝 معاينة المسابقة\n\n🏆 الاسم: "+d.name+"\n📢 النشر: "+d.main.username+"\n📢 اشتراك: "+d.extra1.username+"\n📢 اشتراك: "+d.extra2.username+"\n⏳ المدة: "+countdown(d.duration)+"\n🎖 عدد الفائزين: "+(d.winner_count||1)+"\n📢 إعلان النتائج: "+(d.announce_mode==="auto"?"تلقائي عند انتهاء الوقت":"يدوي من الإدارة")+"\n\n"+d.description+"\n\nالشروط والخصوصية تضاف تلقائياً في آخر المنشور.\n\nلن يُنشر شيء قبل تأكيدك.",{reply_markup:{inline_keyboard:[[{text:"✅ تأكيد نشر المسابقة",callback_data:"admin:publish"}],[{text:"❌ إلغاء",callback_data:"admin:cancel"}]]}});
 }
 async function ownerMessage(env,msg){
   const id=msg.chat.id,x=s(msg.text||msg.caption),st=await state(env);
@@ -121,6 +123,7 @@ async function ownerMessage(env,msg){
   if(x==="📚 مسابقاتي"||x==="/contests")return listContests(env,id);
   if(x==="📊 الإحصائيات"||x==="/stats")return stats(env,id);
   if(/^\/participants(\s+\d+){1,2}$/.test(x)){const p=x.split(/\s+/);return listPeople(env,id,Number(p[1]),Math.max(1,Number(p[2]||1)));}
+  if(st?.step==="winner_manual")return manualWinnerMessage(env,msg,st);
   if(!st)return send(env,id,"اضغط «🎉 مسابقة» حتى تبدأ.",menu());
   const d=st.data,step=st.step;
   try{
@@ -154,8 +157,15 @@ async function ownerMessage(env,msg){
     }
     if(step==="name"){
       if(!x||x.length>90)return send(env,id,"اكتب اسم مختصر، بحد أقصى 90 حرف.",cancelMenu());
-      d.name=x;return preview(env,id,{data:d});
+      d.name=x;await setState(env,"winner_count",d);return send(env,id,"🏆 شكد فائز تريد بالمسابقة؟ اكتب رقم من 1 إلى 10.",cancelMenu());
     }
+    if(step==="winner_count"){
+      const n=Number(x.replace(/[٠-٩]/g,c=>String(c.charCodeAt(0)-1632)));
+      if(!Number.isSafeInteger(n)||n<1||n>10)return send(env,id,"اكتب عدد الفائزين من 1 إلى 10.",cancelMenu());
+      d.winner_count=n;await setState(env,"winner_mode",d);
+      return send(env,id,"📢 شلون تريد إعلان النتائج؟\n\nالتلقائي: عند انتهاء الوقت يعمل سحب عشوائي ويعلن الفائزين.\nاليدوي: عند انتهاء الوقت تنتظر حتى تضغط زر إعلان النتائج بنفسك.\n\nبالوضع اليدوي تگدر تسوي قرعة أو تختار فائزاً معلناً كاختيار يدوي.",{reply_markup:{inline_keyboard:[[{text:"🤖 تلقائي عند انتهاء المدة",callback_data:"admin:mode:auto"}],[{text:"👤 الإعلان بيدي",callback_data:"admin:mode:manual"}],[{text:"❌ إلغاء",callback_data:"admin:cancel"}]]}});
+    }
+    if(step==="winner_mode")return send(env,id,"اختار طريقة إعلان النتائج من الأزرار أعلاه.");
     if(step==="ready"||step==="publishing")return send(env,id,"اضغط «تأكيد نشر المسابقة» أو «إلغاء» من أزرار المعاينة.");
   }catch(e){return send(env,id,"⚠️ "+e.message+"\n\nصحح المدخل وأعد إرساله.",cancelMenu());}
 }
@@ -176,6 +186,7 @@ async function publish(env,cb,base){
     contestId=Number(ins.meta.last_row_id);
     const chs=[main,a,b];
     await env.DB.batch(chs.map((ch,idx)=>env.DB.prepare("INSERT INTO channels(contest_id,idx,chat_id,username,url) VALUES(?,?,?,?,?)").bind(contestId,idx,ch.id,ch.username,ch.url)));
+    await addDrawConfig(env,contestId,d.winner_count,d.announce_mode);
     const c={id:contestId,status:"active",ends_at:end,base_url:base};
     const body=fullText({...d,main,extra1:a,extra2:b,ends_at:end});
     const markup={reply_markup:buttons(c,chs.map((v,i)=>({...v,idx:i})),0)};
@@ -233,6 +244,14 @@ async function callbacks(env,cb,base,ctx){
     if(!admin(env,cb.from)||cb.message?.chat?.type!=="private")return respond(env,cb.id,"غير مصرح.",true);
     if(code==="admin:cancel"){await clear(env);await respond(env,cb.id,"تم الإلغاء.");return send(env,cb.from.id,"❎ تم إلغاء المسودة.",menu());}
     if(code==="admin:publish")return publish(env,cb,base);
+    if(code.startsWith("admin:mode:")){
+      const st=await state(env);if(st?.step!=="winner_mode")return respond(env,cb.id,"المسودة غير جاهزة.",true);
+      const mode=code.slice("admin:mode:".length);if(!["auto","manual"].includes(mode))return respond(env,cb.id,"اختيار غير معروف.",true);
+      await respond(env,cb.id,"تم اختيار طريقة الإعلان");
+      st.data.announce_mode=mode;
+      return preview(env,cb.from.id,{data:st.data});
+    }
+    if(await adminWinnerCallback(env,cb))return;
     return respond(env,cb.id,"زر غير معروف.");
   }
   const m=/^(join|count|time):(\d+)$/.exec(code);
@@ -246,7 +265,7 @@ async function callbacks(env,cb,base,ctx){
 async function listContests(env,chat){
   const r=await env.DB.prepare("SELECT id,name,status,ends_at FROM contests ORDER BY id DESC LIMIT 20").all();
   if(!r.results?.length)return send(env,chat,"ماكو مسابقات منشورة بعد.",menu());
-  return send(env,chat,"📚 مسابقاتي\n\n"+r.results.map(c=>"#"+c.id+" "+c.name+" — "+(c.status==="active"&&c.ends_at>timeNow()?"🟢 فعالة":"🔒 منتهية")+"\n"+baghdad(c.ends_at)).join("\n\n")+"\n\nالمشتركين: /participants 1",menu());
+  return send(env,chat,"📚 مسابقاتي\n\n"+r.results.map(c=>"#"+c.id+" "+c.name+" — "+(c.status==="active"&&c.ends_at>timeNow()?"🟢 فعالة":"🔒 منتهية")+"\n"+baghdad(c.ends_at)).join("\n\n")+"\n\nاضغط المسابقة لإدارة الفائزين.",{reply_markup:{inline_keyboard:r.results.slice(0,12).map(v=>[{text:"🏆 "+v.name.slice(0,45)+" #"+v.id,callback_data:"admin:contest:"+v.id}])}});
 }
 async function stats(env,chat){
   const r=await env.DB.prepare("SELECT id,name,ends_at FROM contests WHERE status IN ('active','ended') ORDER BY id DESC LIMIT 10").all();
@@ -292,7 +311,8 @@ async function scheduled(env){
     if(timeNow()>=c.ends_at){
       const v=await env.DB.prepare("UPDATE contests SET status='ended' WHERE id=? AND status='active'").bind(c.id).run();
       await updateButtons(env,{...c,status:"ended"},true);
-      if(v.meta?.changes)await send(env,c.owner_id,"🔒 انتهت المشاركة بالمسابقة: "+c.name+" (#"+c.id+")\n👥 المشتركون المؤهلون: "+(await count(env,c.id))+"\n/participants "+c.id);
+      if(v.meta?.changes)await send(env,c.owner_id,"🔒 انتهت المشاركة بالمسابقة: "+c.name+" (#"+c.id+")\n👥 المشتركون المؤهلون: "+(await count(env,c.id))+"\nافتح «مسابقاتي» لإدارة النتائج.");
+      try{await announceAutomatic(env,{...c,status:"ended"});}catch(e){console.log("auto draw #"+c.id+": "+e.message);}
     }else{
       const chs=await getChannels(env,c.id);
       const p=await env.DB.prepare("SELECT user_id FROM participants WHERE contest_id=? AND eligible=1 ORDER BY verified_at ASC LIMIT 5").bind(c.id).all();
@@ -303,6 +323,7 @@ async function scheduled(env){
       await updateButtons(env,c,true);
     }
   }catch(e){console.log("cron "+c.id+" "+e.message);}
+  await retryUnannounced(env);
 }
 function page(c){
   const end=Number(c.ends_at)*1000,id=Number(c.id);
