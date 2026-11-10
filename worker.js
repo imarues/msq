@@ -80,7 +80,7 @@ function conditions(c){
     "3. الاشتراك مرة واحدة لكل حساب، وتُلغى الأهلية إذا غادرت قناة.\n"+
     "4. آخر وقت للتسجيل: "+baghdad(c.ends_at)+" (بتوقيت بغداد).\n"+
     "5. عدد الفائزين: "+(c.winner_count||1)+"، "+(c.demo_winners?.length?"إعلان النتائج بعد انتهاء وقت المشاركة.":"طريقة الإعلان: "+(c.announce_mode==="auto"?"قرعة عشوائية تلقائية عند انتهاء الوقت":"إعلان يدوي؛ مع توضيح إذا كان الاختيار عشوائياً أو بتحديد المسؤول"))+".\n"+
-    "6. يسجل البوت اسمك ويوزرك ومعرف حسابك ووقت اشتراكك ويرسلها لمسؤول المسابقة؛ والبايو إن كان متاحاً.";
+    "6. يسجل البوت اسمك ويوزرك ومعرف حسابك ووقت اشتراكك ويرسلها لمسؤول المسابقة؛ والبايو إن كان متاحاً. عند إعلان الفائزين يظهر الاسم واليوزر، أو الاسم ورقم الحساب إذا ما عنده يوزر.";
 }
 function fullText(c){return "🎉 "+c.name+"\n\n"+c.description+"\n\n"+conditions(c);}
 async function getContest(env,id){return env.DB.prepare("SELECT * FROM contests WHERE id=?").bind(id).first();}
@@ -269,7 +269,7 @@ async function callbacks(env,cb,base,ctx){
       await respond(env,cb.id,"تم اختيار نوع المسابقة");
       if(choice==="no"){delete st.data.demo_winners;return preview(env,cb.from.id,{data:st.data});}
       await setState(env,"sim_entries",st.data);
-      return send(env,cb.from.id,"🧪 أرسل قائمة الفائزين التجريبيين بعدد "+st.data.winner_count+" سطر.\n\nكل سطر بصيغة واحدة من:\n@username\n123456789 - اسم تجريبي\n\nمثال إذا عندك فائزين اثنين:\n@ExampleUser\n123456789 - طالب تجريبي\n\nهذوله يتم حفظهم كسجل نتائج محدد مسبقاً للعرض الدراسي فقط، وما يتم فحص عضويتهم ضمن وضع العرض.",cancelMenu());
+      return send(env,cb.from.id,"🧪 أرسل قائمة النتائج التجريبية، سطر لكل اسم، وعددها "+st.data.winner_count+".\n\nالصيغة المفضلة حتى يظهر الاسم بجانب اليوزر:\nAli Hussain - @hx5x5i\n\nإذا بدون يوزر:\n123456789 - Nadeen\n\nوتكدر ترسل @username وحده، لكن اسم صاحبه يظهر فقط إذا يگدر البوت يحصل عليه من معلومات تليكرام أو المشتركين؛ وإلا يعرض اليوزر وحده.\n\nالنتائج المحددة مسبقاً محفوظة للعرض الدراسي وتظهر حقيقتها بتقرير الإدارة الخاص.",cancelMenu());
     }
     if(await adminWinnerCallback(env,cb))return;
     return respond(env,cb.id,"زر غير معروف.");
