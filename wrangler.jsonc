@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "msq",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-10",
+  "triggers": { "crons": ["* * * * *"] },
+  // Cloudflare Workers Builds can provision D1 on the first deployment.
+  // Do not paste a fake database_id. Once created, manage the same DB from the dashboard.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "msq-contests" }
+  ]
+}
