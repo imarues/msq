@@ -4,13 +4,14 @@ A private, owner-only contest-management bot for Telegram, running on Cloudflare
 
 ## Features
 - The owner (same default Telegram ID as the owner defined in imarues/cert) can create contests using the **🎉 مسابقة** button; other Telegram accounts cannot use the management menu.
-- Steps: publication-channel username -> message or image + description -> two required extra channels -> duration -> contest name -> preview -> confirm.
+- Steps: publication-channel username -> message or image + description -> two required extra channels -> duration -> contest name -> winner count (1–10) -> announcement mode -> preview -> confirm.
 - Bot must be an admin in all three public channels, with **Post Messages** permission in the publication channel.
 - Channel post contains the message, appended contest rules, participant counter, registration button, countdown button, links to all three channels, and a live countdown webpage.
 - Real membership verification in all three channels before registering a participant; one entry per Telegram user. On rejoining, eligibility can be restored.
 - Sends the owner a private message with a participant's displayed name, username, numeric user ID, participation time (Baghdad), and bio *only if Telegram makes it available*.
+- Winner announcements: choose **automatic random drawing at contest expiry** or **owner-controlled announcement**. In manual mode the owner may run a random draw or submit the specified number of participants' Telegram IDs. Manual choices are labelled as manual in the channel, not represented as a random lottery. Results are recorded to prevent repeated announcements.
 - Data is stored in Cloudflare D1. Each minute, Cron checks expiry, updates the countdown button, and reviews a small batch of memberships. Buttons cannot update every second inside Telegram; open the live timer button for a seconds-accurate display.
-- Commands: /start, /contest, /contests, /stats, /participants ID [PAGE], /cancel, /forget_participants ID (only after contest ends).
+- Commands: /start, /contest, /contests, /stats, /participants ID [PAGE], /cancel. Open **📚 مسابقاتي** to view drawing and announcement buttons.
 
 No fabricated participants or manipulated winner selection.
 
@@ -36,7 +37,12 @@ Subsequent pushes to **main** trigger Workers Builds to deploy automatically. Th
 - The bot responds to Telegram only at **POST /webhook** when the secret Telegram header matches WEBHOOK_SECRET. Other users can still press contest buttons; they cannot open the private management menu.
 - All contest participants will see the channel privacy terms explaining what is collected.
 - The countdown button is edited about once per minute; an accurate seconds counter is on **/timer?id=CONTEST_ID**. Registration is blocked after expiration on the server regardless of display.
+- Automatically selected winners are rechecked against all three channels immediately before announcement; manual selections must also pass those checks. If Telegram API temporarily fails, the automatic drawing is retried by the Cron trigger.
 - Participant eligibility is refreshed on join and channel-member events. Additionally, periodic polling checks a few existing participants per minute. With large competitions, a full scan can take longer.
 - If you change the Worker name, match it in wrangler.jsonc; avoid changing database bindings to protect stored registrations.
 - Tests still required after connecting the bot: publishing photo + text, missing-channel rejection, duplicate registration, expiration, the timer and /participants.
 - Do not expose your Telegram bot token, webhook secret, or subscriber database.
+
+## Winner announcement
+
+After creating a contest the owner chooses the number of winners (1–10) and whether to announce automatically or manually. For manual announcement, open **📚 مسابقاتي**, choose the contest, and select **🎲 سحب عشوائي وإعلان** or **👤 اختيار مشارك وإعلان (يدوي)**. For the latter, send each eligible participant's Telegram ID as prompted. Both modes wait for the registration deadline. A contest result is stored in D1; further clicks should not create a new draw. Telegram's sending API has no exactly-once guarantee if a network failure occurs between sending and marking the database row as published.
