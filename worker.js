@@ -214,7 +214,7 @@ async function publish(env,cb,base){
     }
     await env.DB.prepare("UPDATE contests SET status='active',post_id=?,photo_post_id=?,last_edit=? WHERE id=?").bind(posted.message_id,pictureId,timeNow(),contestId).run();
     await clear(env);
-    return send(env,cb.from.id,"✅ تم نشر المسابقة!\n\n🏆 "+d.name+"\n🆔 رقم المسابقة: "+contestId+"\n⏳ النهاية: "+baghdad(end)+"\n🔗 https://t.me/"+main.username.slice(1)+"/"+posted.message_id+"\n\nلمراجعة المشتركين: /participants "+contestId,menu());
+    return send(env,cb.from.id,"✅ تم نشر المسابقة!\n\n🏆 "+d.name+"\n🆔 رقم المسابقة: "+contestId+"\n⏳ النهاية: "+baghdad(end)+"\n🔗 https://t.me/"+main.username.slice(1)+"/"+posted.message_id+"\n\nلمراجعة المشاركين: /participants "+contestId,menu());
   }catch(e){
     if(contestId)await env.DB.prepare("UPDATE contests SET status='failed' WHERE id=? AND status='draft'").bind(contestId).run().catch(()=>{});
     await setState(env,"ready",d);
@@ -286,7 +286,7 @@ async function callbacks(env,cb,base,ctx){
   const c=await getContest(env,Number(m[2]));
   if(!c||!["active","ended"].includes(c.status))return respond(env,cb.id,"المسابقة غير متاحة.",true);
   if(m[1]==="join")return join(env,cb,c,ctx);
-  if(m[1]==="count")return respond(env,cb.id,"👥 المشتركون المؤهلون: "+(await count(env,c.id)));
+  if(m[1]==="count")return respond(env,cb.id,"👥 المشاركين المؤهلين: "+(await count(env,c.id)));
   return respond(env,cb.id,c.ends_at<=timeNow()?"🔒 انتهت المشاركة.":"⏳ المتبقي: "+countdown(c.ends_at-timeNow()),true);
 }
 async function listContests(env,chat){
@@ -305,7 +305,7 @@ async function listPeople(env,chat,id,page){
   const r=await env.DB.prepare("SELECT * FROM participants WHERE contest_id=? ORDER BY joined_at DESC LIMIT 12 OFFSET ?").bind(id,(Math.min(page,999)-1)*12).all();
   if(!r.results?.length)return send(env,chat,"ماكو مشتركين بهاي الصفحة.");
   const out=r.results.map((p,i)=>(i+1)+". "+(p.name||"غير متاح")+(p.eligible?" ✅":" ❌")+"\n"+(p.username?"@"+p.username:"بدون يوزر")+" | "+p.user_id+"\n📝 "+(p.bio||"بايو غير متاح")+"\n🕒 "+baghdad(p.joined_at));
-  return send(env,chat,("👥 مشتركو "+c.name+" — الصفحة "+page+"\n\n"+out.join("\n\n")).slice(0,3900));
+  return send(env,chat,("👥 المشاركين في "+c.name+" — الصفحة "+page+"\n\n"+out.join("\n\n")).slice(0,3900));
 }
 async function memberEvent(env,event,ctx){
   const chatId=s(event.chat?.id),userId=s(event.new_chat_member?.user?.id);
@@ -338,7 +338,7 @@ async function scheduled(env){
     if(timeNow()>=c.ends_at){
       const v=await env.DB.prepare("UPDATE contests SET status='ended' WHERE id=? AND status='active'").bind(c.id).run();
       await updateButtons(env,{...c,status:"ended"},true);
-      if(v.meta?.changes)await send(env,c.owner_id,"🔒 انتهت المشاركة بالمسابقة: "+c.name+" (#"+c.id+")\n👥 المشتركون المؤهلون: "+(await count(env,c.id))+"\nافتح «مسابقاتي» لإدارة النتائج.");
+      if(v.meta?.changes)await send(env,c.owner_id,"🔒 انتهت المشاركة بالمسابقة: "+c.name+" (#"+c.id+")\n👥 المشاركين المؤهلين: "+(await count(env,c.id))+"\nافتح «مسابقاتي» لإدارة النتائج.");
       try{await announceAutomatic(env,{...c,status:"ended"});}catch(e){console.log("auto draw #"+c.id+": "+e.message);}
     }else{
       const chs=await getChannels(env,c.id);
