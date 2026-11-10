@@ -1,22 +1,27 @@
-// Educational demonstration-only results. The published contest and result must disclose simulation.
+// Classroom-only preset result entries, with a private audit record and channel allowlist.
 export function parseDemoEntries(text,count){
-  const lines=String(text||"").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  if(lines.length!==count)throw Error("ارسل "+count+" سطر بالضبط، لكل فائز تجريبي سطر واحد.");
-  const result=[],used=new Set();
+  const lines=String(text||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  if(lines.length!==count)throw Error("أرسل "+count+" سطر بالضبط، سطر لكل فائز تجريبي.");
+  const entries=[],seen=new Set();
+  const handle=/^@?([A-Za-z][A-Za-z0-9_]{4,31})$/;
+  const handleFull=/^([^\r\n]{2,70}?)\s*[-–—|]\s*@([A-Za-z][A-Za-z0-9_]{4,31})$/u;
+  const handleFirst=/^@([A-Za-z][A-Za-z0-9_]{4,31})\s*[-–—|]\s*(.{2,70})$/u;
+  const idFull=/^([0-9]{4,20})\s*[-–—|]\s*(.{2,70})$/u;
   for(const line of lines){
-    let username=null,user_id=null,name=null;
-    const handle=/^@?([a-zA-Z][a-zA-Z0-9_]{4,31})$/.exec(line);
-    const named=/^([0-9]{4,20})\s*[-–—]\s*(.{2,70})$/u.exec(line);
-    if(handle){
-      username=handle[1];user_id="demo:@"+username.toLowerCase();name="@"+username;
-    }else if(named){
-      user_id=named[1];name=named[2].trim();
-    }else throw Error("صيغة غير صحيحة: "+line.slice(0,70)+"\nاستعمل @username أو 123456789 - اسم تجريبي");
-    const key=String(user_id).toLowerCase();
-    if(used.has(key))throw Error("لا تكرر نفس المستخدم مرتين.");
-    used.add(key);result.push({user_id,name,username});
+    let entry;
+    const a=handleFull.exec(line),b=handleFirst.exec(line),d=idFull.exec(line),h=handle.exec(line);
+    if(a)entry={user_id:"demo:@"+a[2].toLowerCase(),name:a[1].trim(),username:a[2]};
+    else if(b)entry={user_id:"demo:@"+b[1].toLowerCase(),name:b[2].trim(),username:b[1]};
+    else if(d)entry={user_id:d[1],name:d[2].trim(),username:null};
+    else if(h)entry={user_id:"demo:@"+h[1].toLowerCase(),name:"@"+h[1],username:h[1]};
+    else throw Error("صيغة غير صحيحة: "+line.slice(0,70)+
+      "\nاكتب «الاسم - @username» أو «123456789 - الاسم» أو «@username».");
+    if(!entry.name||!entry.name.trim())throw Error("اسم الفائز التجريبي فارغ.");
+    const k=entry.user_id.toLowerCase();
+    if(seen.has(k))throw Error("لا تكرر نفس اليوزر أو الـID مرتين.");
+    seen.add(k);entries.push(entry);
   }
-  return result;
+  return entries;
 }
 export async function saveDemoEntries(env,id,entries){
   if(!Array.isArray(entries)||entries.length<1||entries.length>10)throw Error("عدد النتائج التجريبية غير صحيح.");
