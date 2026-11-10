@@ -65,9 +65,9 @@ The public-facing classroom demonstration uses normal, neutral contest wording w
 In **Cloudflare → Workers & Pages → msq → Settings → Variables and Secrets**, add a **Text** variable:
 
 - **Name:** `DEMO_ALLOWED_CHANNELS`
-- **Value:** `@testchannel1,@testchannel2,@testchannel3` (replace with the three exact usernames of your authorised classroom channels)
+- **Value:** `@testchannel1,@testchannel2,@testchannel3,@testchannel4` (you may provide three, four or more different authorised test channels)
 
-The three usernames must match the publication channel and the other two subscription channels. Without this setting the bot **blocks publishing/announcing preset demonstrations**. Real contests work without this variable.
+The allowlist can include four or more channels. Each contest still uses **exactly three different channels** (one publication channel and two additional subscription channels), and all three must be in the allowlist. Without this setting, the bot **blocks publishing/announcing preset demonstrations**. Real contests work without this variable.
 
 Use only authorised, consenting demonstration channels with no real prizes, and disclose the actual selection method during the examination/debrief. Keep `BOT_TOKEN` and `WEBHOOK_SECRET` as Cloudflare Secrets.
 
