@@ -132,7 +132,7 @@ async function announcePrepared(env,c,row){
   const simulated=row.result_kind==="simulation";
   const label=simulated?"إعلان النتائج":row.result_kind==="manual"?"اختيار يدوي من الإدارة":"سحب عشوائي من المشاركين المؤهلين";
   const lines=winners.map((w,i)=> (i+1)+". "+winnerDisplay(w)).join("\n");
-  const text="🏆 نتائج مسابقة "+safe(c.name)+
+  const text="🏆 نتائج مسابقة: "+safe(c.name)+
     "\n\n📋 "+(simulated?"إعلان الفائزين: بواسطة بوت المسابقة":row.result_kind==="random"?"إعلان الفائزين عشوائياً : بواسطة بوت المسابقة":"طريقة اختيار الفائزين: "+label)+
     "\n\n"+(winners.length?"🎉 الفائزون:\n\n"+lines:"لم يتوفر مشاركون مؤهلون للسحب.")+
     (simulated?"\n\n🎉 تهانينا للأسماء المعلنة.":"\n\n✅ تم التحقق من شروط المشاركة قبل اعتماد النتائج.");
