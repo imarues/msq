@@ -4,7 +4,7 @@ A private, owner-only contest-management bot for Telegram, running on Cloudflare
 
 ## Features
 - The owner (same default Telegram ID as the owner defined in imarues/cert) can create contests using the **🎉 مسابقة** button; other Telegram accounts cannot use the management menu.
-- Steps: publication-channel username -> message or image + description -> two required extra channels -> duration -> contest name -> winner count (1–10) -> announcement mode -> preview -> confirm.
+- Steps: publication-channel username -> message or image + description -> two required extra channels -> duration -> contest name -> winner count (1–10) -> announcement mode -> **educational simulation choice** -> preview -> confirm.
 - Bot must be an admin in all three public channels, with **Post Messages** permission in the publication channel.
 - Channel post contains the message, appended contest rules, participant counter, registration button, countdown button, links to all three channels, and a live countdown webpage.
 - Real membership verification in all three channels before registering a participant; one entry per Telegram user. On rejoining, eligibility can be restored.
@@ -46,3 +46,16 @@ Subsequent pushes to **main** trigger Workers Builds to deploy automatically. Th
 ## Winner announcement
 
 After creating a contest the owner chooses the number of winners (1–10) and whether to announce automatically or manually. For manual announcement, open **📚 مسابقاتي**, choose the contest, and select **🎲 سحب عشوائي وإعلان** or **👤 اختيار مشارك وإعلان (يدوي)**. For the latter, send each eligible participant's Telegram ID as prompted. Both modes wait for the registration deadline. A contest result is stored in D1; further clicks should not create a new draw. Telegram's sending API has no exactly-once guarantee if a network failure occurs between sending and marking the database row as published.
+
+## Educational simulation (not a real contest draw)
+
+After choosing the announcement mode, the owner sees an optional step **🧪 محاكاة تعليمية**. If **No**, everything works as a normal contest, and winners must meet channel membership conditions. If **Yes**, submit exactly one line per selected mock winner, matching the winner count defined earlier, in either format:
+
+```text
+@ExampleUser
+123456789 - طالب تجريبي
+```
+
+The display labels are predetermined by the owner for an educational demonstration. No eligibility checks are claimed for them. The *contest post*, *admin preview*, and *result announcement* prominently say **educational simulation, no real prize, no genuine random draw**. The result is stored separately in D1 and labelled as simulation; it cannot be announced as a genuine random or eligible manual draw.
+
+If you selected automatic announcement, the simulated results are published after expiry with the prominent warning. If you selected owner-controlled announcement, open **📚 مسابقاتي** and select **🧪 إعلان نتائج المحاكاة التعليمية** after the deadline. Normal contests are unchanged.
