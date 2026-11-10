@@ -94,7 +94,7 @@ async function announcePrepared(env,c,row){
   if(!claim.meta?.changes)return "جاري إعلان النتائج؛ يُمنع النشر المكرر.";
   let winners=JSON.parse(row.winners_json);
   const simulated=row.result_kind==="simulation";
-  const label=simulated?"عرض السحب التجريبي":row.result_kind==="manual"?"اختيار يدوي من الإدارة":"سحب عشوائي من المشاركين المؤهلين";
+  const label=simulated?"إعلان النتائج":row.result_kind==="manual"?"اختيار يدوي من الإدارة":"سحب عشوائي من المشاركين المؤهلين";
   const lines=winners.map((w,i)=> (i+1)+". "+safe(w.name)+(w.username?" (@"+safe(w.username)+")":"")).join("\n");
   const text="🏆 نتائج المسابقة: "+safe(c.name)+
     "\n\n📋 طريقة اختيار الفائزين: "+label+
