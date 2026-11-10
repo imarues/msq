@@ -24,17 +24,7 @@ No fabricated participants or manipulated winner selection.
    - WEBHOOK_SECRET — a random, long secret using A-Z, a-z, 0-9, underscore or hyphen
    Optionally configure OWNER_TELEGRAM_ID, but the default is already the same ID used by your cert bot.
 5. Redeploy after adding secrets if Cloudflare asks you to. Open **https://msq.YOUR-SUBDOMAIN.workers.dev/health**, which should say OK when both secrets and DB binding are configured.
-6. Register Telegram's webhook ONCE using the worker URL:
-   
-   Use a local terminal (replace the three values). Do not send the token to a third party or commit it:
-   
-   export BOT_TOKEN='your-bot-token'
-   export WEBHOOK_SECRET='your-secret'
-   export WORKER_URL='https://msq.YOUR-SUBDOMAIN.workers.dev'
-   curl -sS -X POST "https://api.telegram.org/bot$BOT_TOKEN/setWebhook" \
-     --data-urlencode "url=$WORKER_URL/webhook" \
-     --data-urlencode "secret_token=$WEBHOOK_SECRET" \
-     --data-urlencode 'allowed_updates=["message","callback_query","chat_member"]'
+6. Open **https://msq.ikiraplus.workers.dev/health** in a browser. The Worker itself securely calls Telegram's `setWebhook` API using its Cloudflare secrets and shows **OK - Telegram webhook configured**. No PowerShell or token in URLs is necessary. The scheduled trigger also retries configuration if needed; secret changes trigger reconfiguration automatically.
 
 7. Open the bot in Telegram from your own owner account and send **/start**. Add the bot as administrator to the participating channels before creating a contest.
 
@@ -42,6 +32,7 @@ Subsequent pushes to **main** trigger Workers Builds to deploy automatically. Th
 
 ## Notes
 
+- Webhook activation is automatic from Cloudflare; no local terminal needed.
 - The bot responds to Telegram only at **POST /webhook** when the secret Telegram header matches WEBHOOK_SECRET. Other users can still press contest buttons; they cannot open the private management menu.
 - All contest participants will see the channel privacy terms explaining what is collected.
 - The countdown button is edited about once per minute; an accurate seconds counter is on **/timer?id=CONTEST_ID**. Registration is blocked after expiration on the server regardless of display.
