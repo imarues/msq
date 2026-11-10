@@ -112,3 +112,9 @@ The shared channel-post buttons show **👥 المشاركين**, **❌ المش
 Because Telegram shows everyone the same inline keyboard on a channel post, a member's ✅ state cannot replace ❌ only for that viewer on the public post. Instead, successful registration produces a personal **✅** callback confirmation and, if Telegram permits messaging the participant, a separate private message with the **✅ أنت مشارك بالمسابقة** status button. The public ❌ still allows new visitors to register; the remaining time stays visible.
 
 Winner announcements use **🏆 نتائج مسابقة {name}** rather than **نتائج المسابقة**. Existing earlier posts are not rewritten to the new HTML layout; new contests use the layout, and editable button rows are refreshed by the existing worker process.
+
+## Administration access
+
+Only Telegram user ID **5036902759** is allowed to create contests, use the admin menu, view participant lists, prepare or announce winners manually, or access private graduation reports. This ID is fixed directly in `worker.js` and cannot be overridden with `OWNER_TELEGRAM_ID` in Cloudflare. Administrative commands are accepted only in a **private chat** with that account; administrative callbacks are rejected for other accounts or other chat types. The Telegram webhook requires its configured `WEBHOOK_SECRET` header.
+
+Other Telegram users can only interact with intended public contest features (e.g. joining a contest, viewing the participant count and remaining time). Do not make `BOT_TOKEN` or `WEBHOOK_SECRET` public. Protect GitHub and Cloudflare project access, because anyone able to change deployed code or secrets can alter these restrictions.
