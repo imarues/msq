@@ -33,12 +33,28 @@ export async function getDemoEntries(env,id){
 }
 
 
+// Four authorized channels for posting the *educational demo*.
+// Add the actual usernames supplied by the project owner (never guess them).
+// Once configured, Cloudflare's DEMO_ALLOWED_CHANNELS variable is not needed.
+const DEMO_PUBLICATION_CHANNELS = Object.freeze([
+  // "@first_test_channel",
+  // "@second_test_channel",
+  // "@third_test_channel",
+  // "@fourth_test_channel",
+]);
 const canonical = value => String(value||"").trim().toLowerCase().replace(/^https?:\/\/(www\.)?t\.me\//,"@").replace(/^@/,"");
 export function requireClassroomChannels(env,channels){
-  const chosen=String(env.DEMO_ALLOWED_CHANNELS||"").split(/[\s,;]+/).filter(Boolean).map(canonical);
-  const specified=channels.map(c=>canonical(c.username));
-  if(chosen.length<3 || new Set(chosen).size!==chosen.length || specified.length!==3 ||
-     new Set(specified).size!==3 || !specified.every(ch=>chosen.includes(ch))){
-    throw Error("أضف 3 قنوات تجريبية مختلفة أو أكثر إلى DEMO_ALLOWED_CHANNELS في Cloudflare. يجب أن تكون قنوات المسابقة الثلاث كلها ضمن القائمة المسموحة.");
+  // The allowlist restricts the *publication channel only*, not the subscription channels.
+  const publishChannel=canonical(channels?.[0]?.username);
+  const configured=DEMO_PUBLICATION_CHANNELS.filter(Boolean).map(canonical);
+  if(configured.length>0 && (configured.length!==4 || new Set(configured).size!==4)){
+    throw Error("قائمة قنوات العرض في الكود يجب أن تتضمن أربع قنوات مختلفة وصحيحة.");
+  }
+  // Backward compatibility: keep existing demos working until the owner supplies
+  // the four specific usernames. Once configured in the code, this variable is ignored.
+  const approved=configured.length?configured:
+    String(env.DEMO_ALLOWED_CHANNELS||"").split(/[\s,;]+/).filter(Boolean).map(canonical);
+  if(!publishChannel || !approved.includes(publishChannel)){
+    throw Error("قناة نشر المسابقة غير مصرح بها لوضع العرض التجريبي. أضف يوزرها ضمن القنوات الأربع المسموحة في كود simulation.js.");
   }
 }
