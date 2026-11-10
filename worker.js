@@ -52,7 +52,8 @@ async function init(env){
     env.DB.prepare("CREATE TABLE IF NOT EXISTS channels(contest_id INTEGER NOT NULL,idx INTEGER NOT NULL,chat_id TEXT NOT NULL,username TEXT NOT NULL,url TEXT NOT NULL,PRIMARY KEY(contest_id,idx),UNIQUE(contest_id,chat_id))"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS participants(contest_id INTEGER NOT NULL,user_id TEXT NOT NULL,name TEXT,username TEXT,bio TEXT,joined_at INTEGER NOT NULL,verified_at INTEGER NOT NULL,eligible INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(contest_id,user_id))"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_contests_active ON contests(status,ends_at)"),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_participants ON participants(contest_id,eligible,verified_at)")
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_participants ON participants(contest_id,eligible,verified_at)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS bot_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
   ]);
 }
 async function state(env){const r=await env.DB.prepare("SELECT * FROM setup WHERE owner_id=?").bind(owner(env)).first();return r?{step:r.step,data:JSON.parse(r.data)}:null;}
@@ -269,6 +270,22 @@ async function memberEvent(env,event,ctx){
     if(v.meta?.changes)ctx.waitUntil(updateButtons(env,await getContest(env,entry.id)));
   }
 }
+async function ensureWebhook(env){
+  if(!env.BOT_TOKEN || !env.WEBHOOK_SECRET)throw Error("Missing Telegram credentials.");
+  const target="https://msq.ikiraplus.workers.dev/webhook";
+  const bytes=new TextEncoder().encode(env.BOT_TOKEN+"\n"+env.WEBHOOK_SECRET+"\n"+target);
+  const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))).map(v=>v.toString(16).padStart(2,"0")).join("");
+  const stored=await env.DB.prepare("SELECT value FROM bot_settings WHERE key='webhook_hash'").first();
+  if(stored?.value===hash)return;
+  await api(env,"setWebhook",{
+    url:target,
+    secret_token:env.WEBHOOK_SECRET,
+    allowed_updates:["message","callback_query","chat_member"],
+    drop_pending_updates:false
+  });
+  await env.DB.prepare("INSERT INTO bot_settings(key,value) VALUES('webhook_hash',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(hash).run();
+  console.log("Telegram webhook configured.");
+}
 async function scheduled(env){
   const r=await env.DB.prepare("SELECT * FROM contests WHERE status='active' ORDER BY id DESC LIMIT 50").all();
   for(const c of r.results||[])try{
@@ -294,7 +311,11 @@ function page(c){
 export default {
   async fetch(req,env,ctx){
     const url=new URL(req.url);
-    if(req.method==="GET"&&url.pathname==="/health")return new Response(env.DB&&env.BOT_TOKEN&&env.WEBHOOK_SECRET?"OK":"Missing configuration",{status:env.DB&&env.BOT_TOKEN&&env.WEBHOOK_SECRET?200:503});
+    if(req.method==="GET"&&url.pathname==="/health"){
+      if(!env.DB||!env.BOT_TOKEN||!env.WEBHOOK_SECRET)return new Response("Missing configuration",{status:503});
+      try{await init(env);await ensureWebhook(env);return new Response("OK - Telegram webhook configured",{headers:{"content-type":"text/plain; charset=utf-8","cache-control":"no-store"}});}
+      catch(e){console.log("Telegram setup error: "+e.message);return new Response("Telegram webhook setup failed. Check Workers logs.",{status:503});}
+    }
     if(req.method==="GET"&&["/timer","/count"].includes(url.pathname)){
       const id=Number(url.searchParams.get("id"));
       if(!Number.isSafeInteger(id)||id<1||!env.DB)return new Response("Not found",{status:404});
@@ -315,5 +336,5 @@ export default {
       return new Response("OK");
     }catch(e){console.log("webhook error "+e.stack);return new Response("Error",{status:500});}
   },
-  async scheduled(_,env,ctx){if(env.DB&&env.BOT_TOKEN){await init(env);ctx.waitUntil(scheduled(env));}}
+  async scheduled(_,env,ctx){if(env.DB&&env.BOT_TOKEN){await init(env);ctx.waitUntil((async()=>{try{await ensureWebhook(env);}catch(e){console.log("Webhook auto-registration failed: "+e.message);}await scheduled(env);})());}}
 };
