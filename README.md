@@ -102,3 +102,11 @@ To ensure display names appear correctly in a preset classroom demonstration, en
 
 The contest terms disclose that a winner's numeric Telegram ID can appear in the public announcement when they do not have a public username.
 
+
+## Telegram contest post layout (2026-11-10)
+
+The post now uses Telegram HTML formatting: the first **five numbered contest rules** are shown within a `<blockquote>` section. Each of the three required channel usernames appears on its own line with a visible clickable `@username`. A short privacy disclosure is shown separately, outside the numbered rules.
+
+The channel-post buttons show **👥 المشاركين** and a red **🔴 المشاركة بالمسابقة** button (`style: "danger"`). The separate countdown / per-second timer buttons are removed from the post, but the contest end time and automatic expiry logic remain unchanged. After a successful first registration, the bot attempts to send the participant a separate **green success button in private chat** (`style: "success"`); it cannot alter one shared channel message's button color for only one viewer. If the participant has not opened a private chat with the bot, Telegram may reject that optional acknowledgment.
+
+Winner announcements use **🏆 نتائج مسابقة {name}** rather than **نتائج المسابقة**. Existing earlier posts are not rewritten to the new HTML layout; new contests use the layout, and editable button rows are refreshed by the existing worker process.
