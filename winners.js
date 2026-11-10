@@ -97,7 +97,7 @@ async function announcePrepared(env,c,row){
   const label=simulated?"إعلان النتائج":row.result_kind==="manual"?"اختيار يدوي من الإدارة":"سحب عشوائي من المشاركين المؤهلين";
   const lines=winners.map((w,i)=> (i+1)+". "+safe(w.name)+(w.username?" (@"+safe(w.username)+")":"")).join("\n");
   const text="🏆 نتائج المسابقة: "+safe(c.name)+
-    "\n\n📋 طريقة اختيار الفائزين: "+label+
+    (simulated?"":"\n\n📋 طريقة اختيار الفائزين: "+label)+
     "\n\n"+(winners.length?"🎉 الفائزون:\n"+lines:"لم يتوفر مشاركون مؤهلون للسحب.")+
     (simulated?"\n\n🎉 تهانينا للأسماء المعلنة.":"\n\n✅ تم التحقق من شروط المشاركة قبل اعتماد النتائج.");
   const msg=await tg(env,"sendMessage",{chat_id:c.chat_id,text,parse_mode:"HTML",disable_web_page_preview:true});
