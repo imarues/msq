@@ -73,27 +73,33 @@ async function channel(env,value,mustPost){
   const u="@"+(chat.username||username.substring(1));
   return {id:String(chat.id),username:u,title:chat.title||u,url:"https://t.me/"+u.substring(1)};
 }
+const htmlSafe = value => s(value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 function conditions(c){
-  return "📋 شروط المسابقة:\n"+
-    "1. الانضمام للقنوات الثلاث: "+c.main.username+" و"+c.extra1.username+" و"+c.extra2.username+".\n"+
-    "2. اضغط زر الاشتراك حتى يتأكد البوت من عضويتك بالقنوات الثلاث.\n"+
-    "3. الاشتراك مرة واحدة لكل حساب، وتُلغى الأهلية إذا غادرت قناة.\n"+
-    "4. آخر وقت للتسجيل: "+baghdad(c.ends_at)+" (بتوقيت بغداد).\n"+
-    "5. عدد الفائزين: "+(c.winner_count||1)+"، "+(c.demo_winners?.length?"إعلان النتائج بعد انتهاء وقت المشاركة.":"طريقة الإعلان: "+(c.announce_mode==="auto"?"قرعة عشوائية تلقائية عند انتهاء الوقت":"إعلان يدوي؛ مع توضيح إذا كان الاختيار عشوائياً أو بتحديد المسؤول"))+".\n"+
-    "6. يسجل البوت اسمك ويوزرك ومعرف حسابك ووقت اشتراكك ويرسلها لمسؤول المسابقة؛ والبايو إن كان متاحاً. عند إعلان الفائزين يظهر الاسم واليوزر، أو الاسم ورقم الحساب إذا ما عنده يوزر.";
+  const channelList=[c.main,c.extra1,c.extra2]
+    .map(ch=>"• <a href=\""+htmlSafe(ch.url)+"\">"+htmlSafe(ch.username)+"</a>").join("\n");
+  const way=c.demo_winners?.length?"إعلان النتائج بعد انتهاء وقت المشاركة":
+    c.announce_mode==="auto"?"قرعة عشوائية تلقائية عند انتهاء الوقت":
+    "إعلان يدوي؛ مع توضيح طريقة اختيار الفائزين";
+  return "📋 <b>شروط المسابقة:</b>\n<blockquote>"+
+    "1. الانضمام للقنوات الثلاث:\n"+channelList+"\n"+
+    "2. اضغط زر المشاركة حتى يتأكد البوت من عضويتك بالقنوات الثلاث.\n"+
+    "3. المشاركة مرة واحدة لكل حساب، وتُلغى الأهلية إذا غادرت قناة.\n"+
+    "4. آخر وقت للتسجيل: "+htmlSafe(baghdad(c.ends_at))+" (بتوقيت بغداد).\n"+
+    "5. عدد الفائزين: "+(c.winner_count||1)+"، "+htmlSafe(way)+".</blockquote>"+
+    "\n\n<em>ℹ️ الخصوصية: يسجل البوت الاسم واليوزر وID ووقت المشاركة ويرسلها للمسؤول؛ والبايو إذا كان متاحاً.</em>";
 }
-function fullText(c){return "🎉 "+c.name+"\n\n"+c.description+"\n\n"+conditions(c);}
+function fullText(c){return "🎉 "+htmlSafe(c.name)+"\n\n"+htmlSafe(c.description)+"\n\n"+conditions(c);}
 async function getContest(env,id){return env.DB.prepare("SELECT * FROM contests WHERE id=?").bind(id).first();}
 async function getChannels(env,id){const r=await env.DB.prepare("SELECT * FROM channels WHERE contest_id=? ORDER BY idx").bind(id).all();return r.results||[];}
 async function count(env,id){const r=await env.DB.prepare("SELECT COUNT(*) AS n FROM participants WHERE contest_id=? AND eligible=1").bind(id).first();return Number(r?.n||0);}
 function buttons(c,chs,n){
   const closed=c.status!=="active"||c.ends_at<=timeNow();
-  const rows=[[{text:"👥 المشتركون: "+n,callback_data:"count:"+c.id}]];
+  const rows=[[{text:"👥 المشاركين: "+n,callback_data:"count:"+c.id}]];
   if(closed){rows.push([{text:"🔒 انتهت المشاركة",callback_data:"time:"+c.id}]);}
   else{
-    rows.push([{text:"✅ الاشتراك بالمسابقة",callback_data:"join:"+c.id}]);
-    rows.push([{text:"⏳ المتبقي: "+countdown(c.ends_at-timeNow()),callback_data:"time:"+c.id}]);
-    if(c.base_url)rows.push([{text:"⏱ عداد مباشر بالثواني",url:c.base_url+"/timer?id="+c.id}]);
+    // A channel post has one shared keyboard. Do not turn it green for
+    // everybody when only one member has enrolled.
+    rows.push([{text:"🔴 المشاركة بالمسابقة",callback_data:"join:"+c.id,style:"danger"}]);
     for(const ch of chs)rows.push([{text:"📢 "+(ch.idx===0?"قناة النشر":"قناة الاشتراك "+(ch.idx+1)),url:ch.url}]);
   }
   return {inline_keyboard:rows};
@@ -201,10 +207,10 @@ async function publish(env,cb,base){
     const body=fullText({...d,main,extra1:a,extra2:b,ends_at:end});
     const markup={reply_markup:buttons(c,chs.map((v,i)=>({...v,idx:i})),0)};
     let pictureId=null;
-    if(d.photo&&body.length<=1024)posted=await api(env,"sendPhoto",{chat_id:main.id,photo:d.photo,caption:body,...markup});
+    if(d.photo&&body.length<=1024)posted=await api(env,"sendPhoto",{chat_id:main.id,photo:d.photo,caption:body,parse_mode:"HTML",...markup});
     else {
       if(d.photo){const p=await api(env,"sendPhoto",{chat_id:main.id,photo:d.photo,caption:"🎉 "+d.name});pictureId=p.message_id;}
-      posted=await send(env,main.id,body.substring(0,4096),markup);
+      posted=await send(env,main.id,body,{...markup,parse_mode:"HTML"});
     }
     await env.DB.prepare("UPDATE contests SET status='active',post_id=?,photo_post_id=?,last_edit=? WHERE id=?").bind(posted.message_id,pictureId,timeNow(),contestId).run();
     await clear(env);
@@ -242,6 +248,7 @@ async function join(env,cb,c,ctx){
   if(!ins.meta?.changes)await env.DB.prepare("UPDATE participants SET eligible=1,verified_at=?,name=?,username=? WHERE contest_id=? AND user_id=?").bind(moment,full,person.username||null,c.id,uid).run();
   await respond(env,cb.id,newMember?"✅ تم تسجيلك بنجاح!":"✅ أنت مسجل مسبقاً وعضويتك صحيحة.");
   ctx.waitUntil(updateButtons(env,c));
+  if(newMember)ctx.waitUntil(send(env,uid,"✅ تم تسجيل مشاركتك في مسابقة «"+c.name+"» بنجاح.",{reply_markup:{inline_keyboard:[[{text:"🟢 أنت مشارك بالمسابقة",callback_data:"join:"+c.id,style:"success"}]]}}).catch(()=>{}));
   if(newMember)ctx.waitUntil((async()=>{
     let bio=null;try{const detail=await api(env,"getChat",{chat_id:Number(uid)});bio=detail.bio?.slice(0,350)||null;}catch{}
     if(bio)await env.DB.prepare("UPDATE participants SET bio=? WHERE contest_id=? AND user_id=?").bind(bio,c.id,uid).run();
