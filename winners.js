@@ -1,3 +1,4 @@
+import { getDemoEntries } from "./simulation.js";
 // Transparent winner selection for MSQ. Manual choices are explicitly labelled manual.
 const now = () => Math.floor(Date.now()/1000);
 const safe = s => String(s ?? "").replace(/[&<>"]/g, x=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[x]));
@@ -17,7 +18,8 @@ const contestOpen = c => c && c.ends_at>now() && c.status==="active";
 export async function setupWinnerTables(env){
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS draw_config(contest_id INTEGER PRIMARY KEY, winner_count INTEGER NOT NULL DEFAULT 1, announce_mode TEXT NOT NULL DEFAULT 'manual')"),
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS draw_results(contest_id INTEGER PRIMARY KEY, result_kind TEXT NOT NULL, winners_json TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'prepared', message_id INTEGER, prepared_at INTEGER NOT NULL, announced_at INTEGER)")
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS draw_results(contest_id INTEGER PRIMARY KEY, result_kind TEXT NOT NULL, winners_json TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'prepared', message_id INTEGER, prepared_at INTEGER NOT NULL, announced_at INTEGER)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS simulated_entries(contest_id INTEGER PRIMARY KEY, entries_json TEXT NOT NULL)")
   ]);
 }
 export async function addDrawConfig(env,id,count,mode){
@@ -30,7 +32,11 @@ export async function contestMenu(env,id,chat){
   const result=await env.DB.prepare("SELECT * FROM draw_results WHERE contest_id=?").bind(id).first();
   const n=await env.DB.prepare("SELECT COUNT(*) AS n FROM participants WHERE contest_id=? AND eligible=1").bind(id).first();
   const ended=!contestOpen(c);
-  const keyboard={inline_keyboard:[
+  const mock=await getDemoEntries(env,id);
+  const keyboard={inline_keyboard:mock?.length?[
+    [{text:"🧪 إعلان نتائج المحاكاة التعليمية",callback_data:"admin:simulation:"+id}],
+    [{text:"🔄 تحديث حالة النتائج",callback_data:"admin:contest:"+id}]
+  ]:[
     [{text:"🎲 سحب عشوائي وإعلان",callback_data:"admin:random:"+id}],
     [{text:"👤 اختيار مشارك وإعلان (يدوي)",callback_data:"admin:pick:"+id}],
     [{text:"🔄 تحديث حالة النتائج",callback_data:"admin:contest:"+id}]
@@ -40,7 +46,7 @@ export async function contestMenu(env,id,chat){
     "\n⏳ الحالة: "+(ended?"انتهى الاشتراك":"الاشتراك مستمر")+
     "\n🎖 عدد الفائزين: "+(cfg?.winner_count||1)+
     "\n📢 الإعلان: "+(cfg?.announce_mode==="auto"?"تلقائي بعد النهاية":"يدوي من الإدارة")+
-    "\n🏁 النتائج: "+(result?.status==="published"?"معلنة":result?.status==="prepared"?"جاهزة للنشر":"لم تُعلن")+
+    "\n🏁 النتائج: "+(result?.status==="published"?"معلنة":result?.status==="prepared"?"جاهزة للنشر":"لم تُعلن")+(mock?.length?"\n🧪 محاكاة تعليمية، أسماء نتائجها محددة مسبقاً.":"")+
     "\n\nبعد انتهاء التسجيل، استخدم إحدى طريقتي إعلان الفائزين. الاختيار اليدوي يُعلن باسمه الحقيقي، وليس كقرعة عشوائية.",
     {reply_markup:keyboard});
 }
@@ -86,12 +92,13 @@ async function announcePrepared(env,c,row){
   const claim=await env.DB.prepare("UPDATE draw_results SET status='publishing',prepared_at=? WHERE contest_id=? AND (status='prepared' OR (status='publishing' AND prepared_at<?))").bind(now(),c.id,now()-120).run();
   if(!claim.meta?.changes)return "جاري إعلان النتائج؛ يُمنع النشر المكرر.";
   let winners=JSON.parse(row.winners_json);
-  const label=row.result_kind==="manual"?"اختيار يدوي من الإدارة":"سحب عشوائي من المشاركين المؤهلين";
+  const simulated=row.result_kind==="simulation";
+  const label=simulated?"محاكاة تعليمية — أسماء محددة مسبقاً، ليست قرعة حقيقية":row.result_kind==="manual"?"اختيار يدوي من الإدارة":"سحب عشوائي من المشاركين المؤهلين";
   const lines=winners.map((w,i)=> (i+1)+". "+safe(w.name)+(w.username?" (@"+safe(w.username)+")":"")).join("\n");
-  const text="🏆 نتائج المسابقة: "+safe(c.name)+
+  const text=(simulated?"🧪 نتائج تجريبية وليست فوزاً حقيقياً\n\n":"")+"🏆 نتائج المسابقة: "+safe(c.name)+
     "\n\n📋 طريقة اختيار الفائزين: "+label+
     "\n\n"+(winners.length?"🎉 الفائزون:\n"+lines:"لم يتوفر مشاركون مؤهلون للسحب.")+
-    "\n\n✅ تم التحقق من شروط المشاركة قبل اعتماد النتائج.";
+    (simulated?"\n\n⚠️ هذه أسماء موضوعة مسبقاً للعرض التعليمي، ولم يُشترط تسجيل أصحابها أو استيفاؤهم شروط المشاركة. لا توجد جوائز حقيقية.":"\n\n✅ تم التحقق من شروط المشاركة قبل اعتماد النتائج.");
   const msg=await tg(env,"sendMessage",{chat_id:c.chat_id,text,parse_mode:"HTML",disable_web_page_preview:true});
   await env.DB.prepare("UPDATE draw_results SET status='published',announced_at=?,message_id=? WHERE contest_id=? AND status='publishing'")
     .bind(now(),msg.message_id,c.id).run();
@@ -100,8 +107,18 @@ async function announcePrepared(env,c,row){
     "\nالرابط: https://t.me/"+c.chat_username.replace("@","")+"/"+msg.message_id).catch(e=>console.log("owner winner alert: "+e.message));
   return "تم إعلان النتائج بالقناة.";
 }
+async function announceSimulation(env,c){
+  if(contestOpen(c))throw Error("ما انتهت المدة بعد.");
+  const list=await getDemoEntries(env,c.id);
+  if(!list?.length)throw Error("ماكو نتائج محاكاة محفوظة.");
+  const prior=await env.DB.prepare("SELECT * FROM draw_results WHERE contest_id=?").bind(c.id).first();
+  if(prior)return announcePrepared(env,c,prior);
+  const row=await prepare(env,c,"simulation",list);
+  return announcePrepared(env,c,row);
+}
 async function alreadyOrCreate(env,c,kind,manualUser=null){
   if(contestOpen(c))throw Error("المسابقة ما انتهت بعد. انتظر نهاية التسجيل.");
+  if(await getDemoEntries(env,c.id))throw Error("هذه مسابقة محاكاة تعليمية، استخدم زر إعلان نتائج المحاكاة.");
   const previous=await env.DB.prepare("SELECT * FROM draw_results WHERE contest_id=?").bind(c.id).first();
   if(previous)return announcePrepared(env,c,previous);
   const config=await env.DB.prepare("SELECT winner_count FROM draw_config WHERE contest_id=?").bind(c.id).first();
@@ -123,7 +140,8 @@ async function alreadyOrCreate(env,c,kind,manualUser=null){
 export async function announceAutomatic(env,c){
   const config=await env.DB.prepare("SELECT announce_mode FROM draw_config WHERE contest_id=?").bind(c.id).first();
   if(config?.announce_mode!=="auto")return false;
-  await alreadyOrCreate(env,c,"random");
+  if(await getDemoEntries(env,c.id))await announceSimulation(env,c);
+  else await alreadyOrCreate(env,c,"random");
   return true;
 }
 export async function retryUnannounced(env){
@@ -133,13 +151,19 @@ export async function retryUnannounced(env){
   for(const c of r.results||[])try{await announceAutomatic(env,c);}catch(e){console.log("auto winner retry #"+c.id+": "+e.message);}
 }
 export async function adminWinnerCallback(env,cb){
-  const m=/^admin:(contest|random|pick):(\d+)$/.exec(String(cb.data||""));
+  const m=/^admin:(contest|random|pick|simulation):(\d+)$/.exec(String(cb.data||""));
   if(!m)return false;
   await callback(env,cb.id,"تم استلام الطلب");
   const id=Number(m[2]);
   const c=await env.DB.prepare("SELECT * FROM contests WHERE id=?").bind(id).first();
   if(!c){await ownerMsg(env,cb.from.id,"المسابقة غير موجودة.");return true;}
   if(m[1]==="contest"){await contestMenu(env,id,cb.from.id);return true;}
+  const mock=await getDemoEntries(env,id);
+  if(m[1]==="simulation"){
+    try{const message=await announceSimulation(env,c);await ownerMsg(env,cb.from.id,"🧪 "+message);}catch(e){await ownerMsg(env,cb.from.id,"⚠️ "+e.message);}
+    return true;
+  }
+  if(mock?.length){await ownerMsg(env,cb.from.id,"هذه مسابقة محاكاة تعليمية؛ استخدم زر إعلان نتائج المحاكاة.");return true;}
   if(contestOpen(c)){await ownerMsg(env,cb.from.id,"⏳ الاشتراك مستمر. بعد انتهاء وقت المسابقة تكدر تعلن النتائج.");return true;}
   if(m[1]==="pick"){
     const previous=await env.DB.prepare("SELECT status FROM draw_results WHERE contest_id=?").bind(id).first();
