@@ -43,7 +43,7 @@ export async function contestMenu(env,id,chat){
     [{text:"🔄 تحديث حالة النتائج",callback_data:"admin:contest:"+id}]
   ]};
   return ownerMsg(env,chat,"🏆 "+c.name+" (#"+id+")\n\n"+
-    "👥 المشتركون: "+(n?.n||0)+
+    "👥 المشاركين: "+(n?.n||0)+
     "\n⏳ الحالة: "+(ended?"انتهى الاشتراك":"الاشتراك مستمر")+
     "\n🎖 عدد الفائزين: "+(cfg?.winner_count||1)+
     "\n📢 الإعلان: "+(cfg?.announce_mode==="auto"?"تلقائي بعد النهاية":"يدوي من الإدارة")+
