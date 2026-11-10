@@ -83,6 +83,8 @@ async function prepare(env,c,kind,winners){
 }
 async function announcePrepared(env,c,row){
   if(row.status==="published")return "النتائج مُعلنة مسبقاً.";
+  const claim=await env.DB.prepare("UPDATE draw_results SET status='publishing',prepared_at=? WHERE contest_id=? AND (status='prepared' OR (status='publishing' AND prepared_at<?))").bind(now(),c.id,now()-120).run();
+  if(!claim.meta?.changes)return "جاري إعلان النتائج؛ يُمنع النشر المكرر.";
   let winners=JSON.parse(row.winners_json);
   const label=row.result_kind==="manual"?"اختيار يدوي من الإدارة":"سحب عشوائي من المشاركين المؤهلين";
   const lines=winners.map((w,i)=> (i+1)+". "+safe(w.name)+(w.username?" (@"+safe(w.username)+")":"")).join("\n");
@@ -91,7 +93,7 @@ async function announcePrepared(env,c,row){
     "\n\n"+(winners.length?"🎉 الفائزون:\n"+lines:"لم يتوفر مشاركون مؤهلون للسحب.")+
     "\n\n✅ تم التحقق من شروط المشاركة قبل اعتماد النتائج.";
   const msg=await tg(env,"sendMessage",{chat_id:c.chat_id,text,parse_mode:"HTML",disable_web_page_preview:true});
-  await env.DB.prepare("UPDATE draw_results SET status='published',announced_at=?,message_id=? WHERE contest_id=? AND status='prepared'")
+  await env.DB.prepare("UPDATE draw_results SET status='published',announced_at=?,message_id=? WHERE contest_id=? AND status='publishing'")
     .bind(now(),msg.message_id,c.id).run();
   const privateLines=winners.map(w=>w.name+" | "+(w.username?"@"+w.username:"بدون يوزر")+" | "+w.user_id).join("\n");
   await ownerMsg(env,c.owner_id,"✅ أُعلنت نتائج "+c.name+" (#"+c.id+")\nطريقة الاختيار: "+label+"\n"+(privateLines||"لا يوجد فائزون")+
@@ -106,11 +108,14 @@ async function alreadyOrCreate(env,c,kind,manualUser=null){
   const wanted=Math.max(1,Math.min(10,Number(config?.winner_count)||1));
   let winners=[];
   if(kind==="manual"){
-    if(wanted!==1)throw Error("الاختيار اليدوي يقبل فائزاً واحداً فقط. لهذه المسابقة استخدم السحب العشوائي بعدد الفائزين المحدد.");
-    const person=await env.DB.prepare("SELECT * FROM participants WHERE contest_id=? AND user_id=? AND eligible=1").bind(c.id,String(manualUser)).first();
-    if(!person)throw Error("هذا الـID مو مسجل كمشارك مؤهل.");
-    if(!await eligible(env,c.id,person))throw Error("المشارك ما يستوفي شرط عضوية القنوات الثلاث حالياً.");
-    winners=[person];
+    const ids=Array.isArray(manualUser)?manualUser:[String(manualUser)];
+    if(ids.length!==wanted||new Set(ids).size!==wanted)throw Error("يجب تحديد "+wanted+" فائز مختلف.");
+    for(const uid of ids){
+      const person=await env.DB.prepare("SELECT * FROM participants WHERE contest_id=? AND user_id=? AND eligible=1").bind(c.id,String(uid)).first();
+      if(!person)throw Error("هذا الـID مو مسجل كمشارك مؤهل: "+uid);
+      if(!await eligible(env,c.id,person))throw Error("المشارك ما يستوفي شرط عضوية القنوات الثلاث: "+uid);
+      winners.push(person);
+    }
   }else winners=await randomWinners(env,c.id,wanted);
   const saved=await prepare(env,c,kind,winners);
   return announcePrepared(env,c,saved);
@@ -123,7 +128,7 @@ export async function announceAutomatic(env,c){
 }
 export async function retryUnannounced(env){
   const r=await env.DB.prepare(
-    "SELECT c.* FROM contests c JOIN draw_config d ON d.contest_id=c.id LEFT JOIN draw_results w ON w.contest_id=c.id WHERE c.ends_at<=? AND c.status='ended' AND d.announce_mode='auto' AND (w.contest_id IS NULL OR w.status='prepared') ORDER BY c.id ASC LIMIT 5"
+    "SELECT c.* FROM contests c JOIN draw_config d ON d.contest_id=c.id LEFT JOIN draw_results w ON w.contest_id=c.id WHERE c.ends_at<=? AND c.status='ended' AND d.announce_mode='auto' AND (w.contest_id IS NULL OR w.status IN ('prepared','publishing')) ORDER BY c.id ASC LIMIT 5"
   ).bind(now()).all();
   for(const c of r.results||[])try{await announceAutomatic(env,c);}catch(e){console.log("auto winner retry #"+c.id+": "+e.message);}
 }
@@ -140,8 +145,9 @@ export async function adminWinnerCallback(env,cb){
     const previous=await env.DB.prepare("SELECT status FROM draw_results WHERE contest_id=?").bind(id).first();
     if(previous){await ownerMsg(env,cb.from.id,"النتائج مُجهزة أو مُعلنة مسبقاً. ما يصير نغيّر نوع السحب.");return true;}
     await env.DB.prepare("INSERT INTO setup(owner_id,step,data) VALUES(?,'winner_manual',?) ON CONFLICT(owner_id) DO UPDATE SET step='winner_manual',data=excluded.data")
-      .bind(String(cb.from.id),JSON.stringify({contest_id:id})).run();
-    await ownerMsg(env,cb.from.id,"👤 أرسل Telegram ID للمشارك المسجل حتى أفحص اشتراكه وأعلن فوزه بطريقة «اختيار يدوي».\n\nإذا تريد عدد فائزين أكبر، استخدم السحب العشوائي.\n\nللإلغاء: /cancel");
+      .bind(String(cb.from.id),JSON.stringify({contest_id:id,selected:[]})).run();
+    const cfg=await env.DB.prepare("SELECT winner_count FROM draw_config WHERE contest_id=?").bind(id).first();
+    await ownerMsg(env,cb.from.id,"👤 الاختيار اليدوي: أرسل Telegram ID للمشارك الأول.\nعدد الفائزين المطلوب: "+(cfg?.winner_count||1)+"\n\nبعد استلام جميع المعرفات والتأكد من الشروط، تُعلن النتيجة بوضوح كاختيار يدوي.\n\nللإلغاء: /cancel");
     return true;
   }
   try{
@@ -156,7 +162,19 @@ export async function manualWinnerMessage(env,msg,st){
   const c=await env.DB.prepare("SELECT * FROM contests WHERE id=?").bind(st.data.contest_id).first();
   if(!c){await ownerMsg(env,msg.chat.id,"المسابقة غير موجودة.");return;}
   try{
-    const result=await alreadyOrCreate(env,c,"manual",value);
+    const cfg=await env.DB.prepare("SELECT winner_count FROM draw_config WHERE contest_id=?").bind(c.id).first();
+    const wanted=Math.max(1,Math.min(10,Number(cfg?.winner_count)||1));
+    const selected=Array.isArray(st.data.selected)?st.data.selected:[];
+    if(selected.includes(value)){await ownerMsg(env,msg.chat.id,"هذا المشترك سبق اخترته، أرسل ID مختلف.");return;}
+    const user=await env.DB.prepare("SELECT * FROM participants WHERE contest_id=? AND user_id=? AND eligible=1").bind(c.id,value).first();
+    if(!user||!await eligible(env,c.id,user)){await ownerMsg(env,msg.chat.id,"❌ هذا الشخص مو مؤهل أو مو مسجل بالمسابقة. أرسل ID ثاني.");return;}
+    selected.push(value);
+    if(selected.length<wanted){
+      await env.DB.prepare("UPDATE setup SET data=? WHERE owner_id=? AND step='winner_manual'").bind(JSON.stringify({contest_id:c.id,selected}),String(msg.from.id)).run();
+      await ownerMsg(env,msg.chat.id,"✅ تم اعتماد "+selected.length+" من "+wanted+" للفوز.\nأرسل ID الفائز التالي، أو /cancel.");
+      return;
+    }
+    const result=await alreadyOrCreate(env,c,"manual",selected);
     await env.DB.prepare("DELETE FROM setup WHERE owner_id=?").bind(String(msg.from.id)).run();
     await ownerMsg(env,msg.chat.id,"✅ "+result);
   }catch(e){await ownerMsg(env,msg.chat.id,"⚠️ "+e.message+"\nجرّب ID آخر أو /cancel.");}
