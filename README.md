@@ -60,24 +60,20 @@ The bot stores the true method and selected entries in a private D1 record. The 
 
 The public-facing classroom demonstration uses normal, neutral contest wording without displaying a simulation label, but it does not affirm that preset entries actually passed eligibility checks or were chosen by a random algorithm. For normal contests, real winner eligibility is checked.
 
-### Restrict preset-result demos to four allowed publication channels
+### Approved publication channels (configured in code)
 
-The code now has a fixed list called `DEMO_PUBLICATION_CHANNELS` in `simulation.js`. This list is only for **where the contest is published** and never forces subscriptions to all four channels.
+The following four channels are already configured in `simulation.js` for the classroom demonstration:
 
-Paste four specific authorized test channel usernames into this array after the owner provides them, for example:
+- `@zzxus81`
+- `@iKiraPlus`
+- `@iKiraPlus2`
+- `@ikiraplus1`
 
-```js
-const DEMO_PUBLICATION_CHANNELS = Object.freeze([
-  "@first_test_channel",
-  "@second_test_channel",
-  "@third_test_channel",
-  "@fourth_test_channel",
-]);
-```
+The demo allowlist checks **only the publication channel**. The two additional subscription channels are selected during normal contest setup and are **not** forced to be any of these four channels.
 
-**Those example handles are placeholders, not configured channels.** Until the owner supplies the real four usernames, the array remains empty to avoid accidentally authorizing the wrong channels. As an uninterrupted-transition measure, the old Cloudflare `DEMO_ALLOWED_CHANNELS` value is accepted *only while the hardcoded array is empty*. Once four usernames are added in code, the Cloudflare variable is ignored and can be deleted.
+No Cloudflare `DEMO_ALLOWED_CHANNELS` variable is necessary; the code ignores that legacy variable. The owner can remove it in Cloudflare if it exists. Updates to the approved four-channel list require a repository change.
 
-The contest still has its separate existing rules for **one publication channel and two optional-to-select but required-to-join subscription channels**. This fixed publication allowlist neither adds a fourth subscription requirement nor dictates which two other channels must be used.
+Selection of predetermined results is confined to approved publication channels. The private audit records the actual selection method, and the public result avoids false claims of random drawing or verified eligibility.
 
 Use only authorised, consenting demonstration channels with no real prizes, and disclose the actual selection method during the examination/debrief. Keep `BOT_TOKEN` and `WEBHOOK_SECRET` as Cloudflare Secrets.
 
