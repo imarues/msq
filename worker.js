@@ -5,8 +5,9 @@ import { parseDemoEntries, saveDemoEntries, requireClassroomChannels } from "./s
 const DEFAULT_OWNER = "5036902759";
 const timeNow = () => Math.floor(Date.now()/1000);
 const s = v => String(v ?? "").trim();
-const owner = env => s(env.OWNER_TELEGRAM_ID || DEFAULT_OWNER);
-const admin = (env,u) => s(u?.id) === owner(env);
+// Single administrator: the Cloudflare environment cannot override this Telegram ID.
+const owner = () => DEFAULT_OWNER;
+const admin = (_,u) => s(u?.id) === DEFAULT_OWNER;
 const inChat = m => ["creator","administrator","member"].includes(m?.status) || (m?.status==="restricted" && m.is_member===true);
 const pad = v => String(v).padStart(2,"0");
 const countdown = t => {let d=Math.max(0,Math.ceil(t));return pad(Math.floor(d/3600))+":"+pad(Math.floor(d%3600/60))+":"+pad(d%60);};
@@ -124,6 +125,8 @@ async function preview(env,chat,st){
   await send(env,chat,"📝 معاينة المسابقة\n\n🏆 الاسم: "+d.name+"\n📢 النشر: "+d.main.username+"\n📢 اشتراك: "+d.extra1.username+"\n📢 اشتراك: "+d.extra2.username+"\n⏳ المدة: "+countdown(d.duration)+"\n🎖 عدد الفائزين: "+(d.winner_count||1)+"\n📢 إعلان النتائج: "+(d.announce_mode==="auto"?"تلقائي عند انتهاء الوقت":"يدوي من الإدارة")+"\n🧪 نوع العرض: "+(d.demo_winners?.length?"محاكاة تعليمية بأسماء محددة مسبقاً ("+d.demo_winners.length+")":"مسابقة عادية")+"\n\n"+d.description+"\n\nالشروط والخصوصية تضاف تلقائياً في آخر المنشور.\n\nلن يُنشر شيء قبل تأكيدك.",{reply_markup:{inline_keyboard:[[{text:"✅ تأكيد نشر المسابقة",callback_data:"admin:publish"}],[{text:"❌ إلغاء",callback_data:"admin:cancel"}]]}});
 }
 async function ownerMessage(env,msg){
+  // Defense-in-depth: never process administrative messages from others or group chats.
+  if(!admin(env,msg?.from)||msg?.chat?.type!=="private")return;
   const id=msg.chat.id,x=s(msg.text||msg.caption),st=await state(env);
   if(x==="/start"||x==="القائمة")return send(env,id,"أهلاً بيك، إدارة المسابقات متاحة لحسابك فقط.",menu());
   if(x==="/cancel"||x==="إلغاء"){await clear(env);return send(env,id,"❎ ألغيت إعداد المسابقة.",menu());}
